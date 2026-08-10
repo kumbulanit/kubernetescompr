@@ -1,0 +1,55 @@
+# ==============================================================================
+# AxisPay namespaces — TRUST BOUNDARIES, not folders
+# ==============================================================================
+# Namespaces here map to a PCI-DSS-style segmentation model. On Day 4 the
+# NetworkPolicies select on these exact labels; on Day 5 RBAC and Pod Security
+# Admission are anchored to them. Getting the labels right on Monday is what
+# makes Thursday and Friday work.
+#
+#   kubectl apply -f manifests/00-namespaces/
+# ==============================================================================
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: axispay-edge
+  labels:
+    app.kubernetes.io/part-of: axispay
+    axispay.io/zone: edge
+    axispay.io/pci-scope: "false"      # holds no cardholder data
+    axispay.io/day-introduced: "1"
+    kubernetes.io/metadata.name: axispay-edge
+  annotations:
+    axispay.io/description: >-
+      DMZ. The only namespace permitted to receive traffic from outside the
+      cluster. Must never reach the data tier directly.
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: axispay-core
+  labels:
+    app.kubernetes.io/part-of: axispay
+    axispay.io/zone: core
+    axispay.io/pci-scope: "true"       # the Cardholder Data Environment
+    axispay.io/day-introduced: "1"
+    kubernetes.io/metadata.name: axispay-core
+  annotations:
+    axispay.io/description: >-
+      Cardholder Data Environment. Default-deny networking from Day 4;
+      Pod Security Admission "restricted" from Day 5.
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: axispay-async
+  labels:
+    app.kubernetes.io/part-of: axispay
+    axispay.io/zone: async
+    axispay.io/pci-scope: "true"
+    axispay.io/day-introduced: "1"
+    kubernetes.io/metadata.name: axispay-async
+  annotations:
+    axispay.io/description: >-
+      Event-driven processing: settlement, notification, audit, reporting.
+      Populated from Day 2 onward.

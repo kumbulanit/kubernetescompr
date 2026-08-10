@@ -1,0 +1,23 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: fraud-service
+  namespace: axispay-core
+  labels:
+    app.kubernetes.io/name: fraud-service
+    app.kubernetes.io/instance: axispay
+    app.kubernetes.io/component: core
+    app.kubernetes.io/part-of: axispay
+    axispay.io/day-introduced: "2"
+  annotations:
+    axispay.io/dns-name: "fraud-service.axispay-core.svc.cluster.local"
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: fraud-service
+    app.kubernetes.io/instance: axispay
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+      protocol: TCP

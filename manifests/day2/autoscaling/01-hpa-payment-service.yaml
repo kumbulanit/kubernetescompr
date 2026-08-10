@@ -1,0 +1,90 @@
+# ==============================================================================
+# HorizontalPodAutoscaler — payment-service and fraud-service
+# ==============================================================================
+# HPA computes:
+#
+#     desiredReplicas = ceil( currentReplicas x currentUtilisation / target )
+#
+# where utilisation is a PERCENTAGE OF THE REQUEST. With no request there is no
+# denominator, the HPA reports <unknown>, and nothing happens. That is why
+# resources are taught (L2.1) before autoscaling (L2.4) — the dependency is
+# arithmetic, not preference.
+#
+# Requires metrics-server:  minikube addons enable metrics-server -p axispay
+# ==============================================================================
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: payment-service
+  namespace: axispay-core
+  labels:
+    app.kubernetes.io/name: payment-service
+    app.kubernetes.io/part-of: axispay
+    axispay.io/day-introduced: "2"
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: payment-service
+  minReplicas: 3          # never below 3 — one per node, survives a node loss
+  maxReplicas: 8          # bounded by the namespace ResourceQuota
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70    # of the 100m REQUEST, not of the 500m limit
+  behavior:
+    scaleUp:
+      # React fast to a traffic spike: payments do not wait.
+      stabilizationWindowSeconds: 30
+      policies:
+        - type: Percent
+          value: 100        # at most double
+          periodSeconds: 30
+        - type: Pods
+          value: 2          # ...and at most +2 pods
+          periodSeconds: 30
+      selectPolicy: Min     # whichever is more conservative
+    scaleDown:
+      # Scale down SLOWLY. Aggressive scale-down causes flapping: you remove
+      # capacity, latency rises, you scale back up. Five minutes of stability
+      # costs almost nothing and prevents the oscillation entirely.
+      stabilizationWindowSeconds: 300
+      policies:
+        - type: Pods
+          value: 1
+          periodSeconds: 60
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: fraud-service
+  namespace: axispay-core
+  labels:
+    app.kubernetes.io/name: fraud-service
+    app.kubernetes.io/part-of: axispay
+    axispay.io/day-introduced: "2"
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: fraud-service
+  minReplicas: 2
+  maxReplicas: 6
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 65    # lower target: model evaluation is bursty
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 15
+      policies: [{ type: Pods, value: 2, periodSeconds: 30 }]
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies: [{ type: Pods, value: 1, periodSeconds: 60 }]

@@ -1,0 +1,41 @@
+# ==============================================================================
+# Taints and tolerations — the OPPOSITE direction to affinity
+# ==============================================================================
+#   affinity     the POD says   "I want to be near X"
+#   taint        the NODE says  "keep away unless you have a pass"
+#   toleration   the POD says   "I have the pass"
+#
+# A toleration does NOT attract a pod to a node. It only removes an objection.
+# To both repel everything else AND attract a specific workload you need a
+# taint on the node and BOTH a toleration and a nodeSelector on the pod.
+#
+# THREE EFFECTS:
+#   NoSchedule        no new pods, existing ones stay
+#   PreferNoSchedule  a soft version; avoid if possible
+#   NoExecute         no new pods AND EVICT the ones already there
+#
+# In L4.6 you taint a node as a "PCI-restricted" node, confirm ordinary
+# workloads move off it, and then run the payment path there deliberately.
+#
+#   kubectl taint nodes axispay-m02 axispay.io/pci-zone=cde:NoSchedule
+#   kubectl label  nodes axispay-m02 axispay.io/pci-zone=cde
+# ==============================================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: payment-service
+  namespace: axispay-core
+  annotations:
+    axispay.io/note: >-
+      Apply AFTER tainting a node in L4.6. The toleration alone does not move
+      the pod there — the nodeSelector is what attracts it.
+spec:
+  template:
+    spec:
+      tolerations:
+        - key: axispay.io/pci-zone
+          operator: Equal
+          value: cde
+          effect: NoSchedule
+      nodeSelector:
+        axispay.io/pci-zone: cde

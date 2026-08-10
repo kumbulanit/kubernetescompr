@@ -1,0 +1,63 @@
+{{/*
+Reconciliation runs nightly and must finish before the settlement window.
+
+timeZone is not decoration. Without it the schedule is UTC, and twice a year
+the job silently moves an hour relative to the business day it reconciles.
+
+concurrencyPolicy: Forbid is the load-bearing line. If last night's run is
+still going, a second one must not start — two reconcilers writing the same
+ledger produce a double-counted journal, and a double-counted journal is a
+regulatory finding.
+*/}}
+{{- range $name, $cj := .Values.cronjobs }}
+{{- if $cj.enabled }}
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ $name }}
+  namespace: {{ include "axispay.namespace" (dict "root" $ "zone" $cj.zone "name" $name) }}
+  labels:
+    {{- include "axispay.labels" $ | nindent 4 }}
+spec:
+  schedule: {{ $cj.schedule | quote }}
+  timeZone: {{ $cj.timeZone | quote }}
+  concurrencyPolicy: {{ $cj.concurrencyPolicy }}
+  startingDeadlineSeconds: {{ $cj.startingDeadlineSeconds }}
+  successfulJobsHistoryLimit: {{ $cj.successfulJobsHistoryLimit }}
+  failedJobsHistoryLimit: {{ $cj.failedJobsHistoryLimit }}
+  jobTemplate:
+    spec:
+      backoffLimit: {{ $cj.backoffLimit }}
+      activeDeadlineSeconds: {{ $cj.activeDeadlineSeconds }}
+      template:
+        metadata:
+          labels:
+            {{- include "axispay.labels" $ | nindent 12 }}
+            {{- include "axispay.selectorLabels" (dict "root" $ "name" $name) | nindent 12 }}
+        spec:
+          restartPolicy: OnFailure
+          serviceAccountName: {{ $name }}
+          automountServiceAccountToken: false
+          securityContext:
+            {{- include "axispay.podSecurityContext" $ | nindent 12 }}
+          containers:
+            - name: {{ $name }}
+              image: {{ include "axispay.image" (dict "root" $ "name" ($cj.image | default $name) "tag" $cj.tag) }}
+              imagePullPolicy: {{ $.Values.global.image.pullPolicy }}
+              env:
+                {{- include "axispay.commonEnv" (dict "root" $ "name" $name) | nindent 16 }}
+                {{- range $k, $v := ($cj.env | default dict) }}
+                - name: {{ $k }}
+                  value: {{ $v | quote }}
+                {{- end }}
+              resources:
+                {{- toYaml $cj.resources | nindent 16 }}
+              securityContext:
+                {{- include "axispay.containerSecurityContext" $ | nindent 16 }}
+              volumeMounts:
+                {{- include "axispay.tmpVolumeMounts" $ | nindent 16 }}
+          volumes:
+            {{- include "axispay.tmpVolumes" $ | nindent 12 }}
+{{- end }}
+{{- end }}

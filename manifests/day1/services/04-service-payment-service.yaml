@@ -1,0 +1,42 @@
+# ==============================================================================
+# payment-service — Service (ClusterIP)
+# The busiest Service in the platform
+# ==============================================================================
+# Introduced: Day 1, L1.5 / L1.6
+#
+# A Service is two things: a stable virtual IP, and a LABEL SELECTOR. The
+# selector is what finds the pods; the result of that selection is written to
+# an EndpointSlice, and kube-proxy programs the node's dataplane from it.
+#
+# Direction of causation matters and is the single most common source of
+# confusion: the Service does not "contain" pods. It selects them, continuously.
+# Change a pod's labels and it silently leaves the Service.
+#
+#   kubectl get endpointslice -n axispay-core -l kubernetes.io/service-name=payment-service
+# ==============================================================================
+apiVersion: v1
+kind: Service
+metadata:
+  name: payment-service
+  namespace: axispay-core
+  labels:
+    app.kubernetes.io/name: payment-service
+    app.kubernetes.io/instance: axispay
+    app.kubernetes.io/component: core
+    app.kubernetes.io/part-of: axispay
+    axispay.io/day-introduced: "1"
+  annotations:
+    axispay.io/dns-name: "payment-service.axispay-core.svc.cluster.local"
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: payment-service
+    app.kubernetes.io/instance: axispay
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http     # refers to the CONTAINER PORT BY NAME, not by number.
+                           # The container can change its port without this file
+                           # changing - which matters once the same Service
+                           # definition is templated across services in Helm.
+      protocol: TCP

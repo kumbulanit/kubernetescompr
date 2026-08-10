@@ -1,0 +1,13 @@
+%% D5 M5.5 — four hops, and the one that fails silently
+graph LR
+    C["Counter.inc()<br/><i>in the code</i>"] --> M["/metrics<br/><i>a text endpoint</i>"]
+    M --> P["Prometheus<br/><b>PULLS</b> every 15-30s"]
+    SM["ServiceMonitor<br/><i>a CRD, not Kubernetes</i>"] -.->|"operator generates<br/>the scrape config"| P
+    SVC["Service<br/><i>selected, not the pods —</i><br/><i>so unready pods are not scraped</i>"] -.-> P
+    P --> DB["TSDB<br/><i>6h retention</i>"]
+    DB --> G["Grafana"]
+    DB --> AR["PrometheusRule<br/>-> Alertmanager"]
+    FAIL["<b>MISSING is not DOWN</b><br/>down = tried and failed<br/>missing = never selected<br/><i>almost always the release label</i>"]
+    SM --> FAIL
+    style SM fill:#2b1f3b,stroke:#8e6fbf,color:#fff
+    style FAIL fill:#3b1f1f,stroke:#d32f2f,color:#fff

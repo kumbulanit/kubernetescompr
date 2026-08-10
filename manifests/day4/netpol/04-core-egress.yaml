@@ -1,0 +1,49 @@
+# ==============================================================================
+# STEP 4 — where the CDE may go
+# ==============================================================================
+# Egress rules are what stop a compromised pod exfiltrating data. Ingress rules
+# stop an attacker getting IN; egress rules stop the data getting OUT. Most
+# platforms write the first and forget the second.
+# ==============================================================================
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-core-to-data
+  namespace: axispay-core
+  labels: { app.kubernetes.io/part-of: axispay, axispay.io/day-introduced: "4" }
+spec:
+  podSelector:
+    matchExpressions:
+      - key: app.kubernetes.io/name
+        operator: In
+        values: [payment-service, ledger-service, customer-service, merchant-service, fraud-service]
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector: { matchLabels: { axispay.io/zone: data } }
+      ports:
+        - { protocol: TCP, port: 5432 }   # PostgreSQL
+        - { protocol: TCP, port: 6379 }   # Redis
+        - { protocol: TCP, port: 5672 }   # RabbitMQ
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-core-internal
+  namespace: axispay-core
+  labels: { app.kubernetes.io/part-of: axispay, axispay.io/day-introduced: "4" }
+  annotations:
+    axispay.io/description: "payment-service may call the other core services"
+spec:
+  podSelector:
+    matchLabels: { app.kubernetes.io/name: payment-service }
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - podSelector:
+            matchExpressions:
+              - key: app.kubernetes.io/name
+                operator: In
+                values: [merchant-service, fraud-service, routing-service, ledger-service, customer-service]
+      ports: [{ protocol: TCP, port: 8080 }]

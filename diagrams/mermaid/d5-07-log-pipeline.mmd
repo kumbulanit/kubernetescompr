@@ -1,0 +1,15 @@
+%% D5 M5.6 — labels are indexed, content is scanned
+graph LR
+    POD["pod<br/><i>JSON to stdout</i>"] --> N["the NODE<br/>/var/log/pods"]
+    N --> A["Alloy<br/><i>DaemonSet — one per node</i>"]
+    A --> L["Loki"]
+    L --> G["Grafana Explore"]
+    LAB["<b>LABELS — indexed, BOUNDED</b><br/>namespace · service · pod<br/>container · node<br/><br/><i>{namespace=&quot;axispay-core&quot;} = index lookup</i>"]
+    BOD["<b>BODY — scanned, may be UNBOUNDED</b><br/>correlation_id · payment_id · duration_ms<br/><br/><i>| json | correlation_id=&quot;...&quot; = a scan</i>"]
+    A --> LAB
+    A --> BOD
+    WARN["correlation_id as a LABEL<br/>= one stream per request<br/>= 1.7 million streams a day<br/><b>Loki OOMs during the incident</b>"]
+    LAB --> WARN
+    style LAB fill:#1f3b2b,stroke:#66bb6a,color:#fff
+    style BOD fill:#3b2f1f,stroke:#ffa726,color:#fff
+    style WARN fill:#3b1f1f,stroke:#d32f2f,color:#fff

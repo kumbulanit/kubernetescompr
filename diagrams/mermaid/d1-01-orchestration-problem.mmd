@@ -1,0 +1,28 @@
+%% D1 M1.2 — Why orchestration exists
+%% Use: slide "The problem containers created"
+graph TB
+    subgraph BEFORE["WITHOUT ORCHESTRATION — 12 servers, 40 containers, 1 engineer"]
+        direction LR
+        Q1["Which server has capacity?<br/><i>manual spreadsheet</i>"]
+        Q2["A container died at 02:14.<br/><i>who restarts it?</i>"]
+        Q3["Deploy v2 without downtime.<br/><i>manual, per server</i>"]
+        Q4["Server 7 is on fire.<br/><i>move 6 containers, by hand</i>"]
+        Q5["Scale to 30 for Black Friday.<br/><i>and back down after</i>"]
+        Q6["Which IP is payment-service<br/>on today?"]
+    end
+    subgraph AFTER["WITH KUBERNETES"]
+        A1["Scheduler places pods"]
+        A2["Controllers restart them"]
+        A3["Deployments roll forward"]
+        A4["Pods reschedule automatically"]
+        A5["HPA scales on demand"]
+        A6["Services give stable names"]
+    end
+    Q1 --> A1
+    Q2 --> A2
+    Q3 --> A3
+    Q4 --> A4
+    Q5 --> A5
+    Q6 --> A6
+    style BEFORE fill:#3b1f1f,stroke:#d32f2f,color:#fff
+    style AFTER fill:#1f3b2b,stroke:#66bb6a,color:#fff

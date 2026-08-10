@@ -1,0 +1,127 @@
+# ==============================================================================
+# ledger-service — Deployment + Service (Day 3)
+# Double-entry ledger — append only, refuses unbalanced journals
+# ==============================================================================
+# Introduced today because it needs the data tier. Carries the full Day 2
+# baseline (resources, three probes, graceful shutdown) plus the Day 3
+# additions: config from a ConfigMap, credentials from a Secret, and the
+# hardened securityContext.
+# ==============================================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ledger-service
+  namespace: axispay-core
+  labels: &labels
+    app.kubernetes.io/name: ledger-service
+    app.kubernetes.io/instance: axispay
+    app.kubernetes.io/version: "1.0.0"
+    app.kubernetes.io/component: core
+    app.kubernetes.io/part-of: axispay
+    app.kubernetes.io/managed-by: kubectl
+    axispay.io/zone: core
+    axispay.io/day-introduced: "3"
+  annotations:
+    kubernetes.io/change-cause: "Day 3 — Double-entry ledger — append only, refuses unbalanced journals"
+spec:
+  replicas: 2
+  revisionHistoryLimit: 5
+  strategy:
+    type: RollingUpdate
+    rollingUpdate: { maxUnavailable: 0, maxSurge: 1 }
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: ledger-service
+      app.kubernetes.io/instance: axispay
+  template:
+    metadata:
+      labels: *labels
+    spec:
+      terminationGracePeriodSeconds: 45
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: ledger-service
+          image: axispay/ledger-service:1.0.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ["ALL"] }
+          resources:
+            requests: { cpu: "50m", memory: "72Mi" }
+            limits:   { cpu: "250m", memory: "192Mi" }
+          startupProbe:
+            httpGet: { path: /startupz, port: http }
+            periodSeconds: 2
+            failureThreshold: 30
+          livenessProbe:
+            httpGet: { path: /healthz, port: http }
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          readinessProbe:
+            httpGet: { path: /readyz, port: http }
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 2
+          lifecycle:
+            preStop: { exec: { command: ["sh","-c","sleep 8"] } }
+          envFrom:
+            # All shared platform config in one place — L3.1
+            - configMapRef:
+                name: axispay-platform-config
+          env:
+            # Credentials from a Secret, never from the ConfigMap — L3.2
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: axispay-db-credentials
+                  key: DATABASE_URL
+            - name: SERVICE_VERSION
+              value: "1.0.0"
+            - name: POD_NAME
+              valueFrom: { fieldRef: { fieldPath: metadata.name } }
+            - name: POD_IP
+              valueFrom: { fieldRef: { fieldPath: status.podIP } }
+            - name: NODE_NAME
+              valueFrom: { fieldRef: { fieldPath: spec.nodeName } }
+            - name: NAMESPACE
+              valueFrom: { fieldRef: { fieldPath: metadata.namespace } }
+          volumeMounts:
+            # readOnlyRootFilesystem needs somewhere legitimate to write
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: { medium: Memory, sizeLimit: 32Mi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ledger-service
+  namespace: axispay-core
+  labels:
+    app.kubernetes.io/name: ledger-service
+    app.kubernetes.io/instance: axispay
+    app.kubernetes.io/component: core
+    app.kubernetes.io/part-of: axispay
+    axispay.io/day-introduced: "3"
+  annotations:
+    axispay.io/dns-name: "ledger-service.axispay-core.svc.cluster.local"
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: ledger-service
+    app.kubernetes.io/instance: axispay
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http

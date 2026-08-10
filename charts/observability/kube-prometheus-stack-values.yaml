@@ -1,0 +1,180 @@
+# ==============================================================================
+# kube-prometheus-stack — values for a classroom cluster
+# ==============================================================================
+# Upstream defaults assume a real cluster with real disks. On a three-node
+# Minikube they will fill the disk, evict pods, and turn the observability
+# module into a troubleshooting-the-monitoring module.
+#
+# Every override below trades retention or coverage for the ability to run on
+# a laptop, and says which. Nothing here is a security relaxation.
+#
+#   helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+#   helm upgrade --install kube-prometheus-stack \
+#     prometheus-community/kube-prometheus-stack \
+#     -n axispay-observability --create-namespace \
+#     -f charts/observability/kube-prometheus-stack-values.yaml
+# ==============================================================================
+
+fullnameOverride: kube-prometheus-stack
+
+# ---- Prometheus --------------------------------------------------------------
+prometheus:
+  prometheusSpec:
+    # SIX HOURS. Long enough to see a morning's labs, short enough that the
+    # TSDB stays under a gigabyte. Production would be 15–30 days on a real
+    # volume; this is a laptop, and a full disk evicts the payment platform
+    # before it evicts Prometheus.
+    retention: 6h
+    retentionSize: 2GB
+    scrapeInterval: 30s
+    evaluationInterval: 30s
+
+    # The selectors that decide which ServiceMonitors and rules are honoured.
+    #
+    # `false` here means "use the label selector", and the label is
+    # `release: kube-prometheus-stack`. Setting these to true would pick up
+    # every ServiceMonitor in the cluster including ones nobody reviewed.
+    # Leaving them false is why every AxisPay ServiceMonitor carries that
+    # label — and why one without it is silently ignored.
+    serviceMonitorSelectorNilUsesHelmValues: true
+    ruleSelectorNilUsesHelmValues: true
+    podMonitorSelectorNilUsesHelmValues: true
+    probeSelectorNilUsesHelmValues: true
+
+    # Watch every namespace, not just this one.
+    serviceMonitorNamespaceSelector: {}
+    ruleNamespaceSelector: {}
+    alertmanagerConfigNamespaceSelector: {}
+
+    resources:
+      requests: { cpu: 150m, memory: 512Mi }
+      limits:   { cpu: 800m, memory: 1500Mi }
+
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: standard
+          accessModes: [ReadWriteOnce]
+          resources:
+            requests:
+              storage: 4Gi
+
+    # Every series gets these labels, so a query can tell one cluster from
+    # another once there is more than one.
+    externalLabels:
+      cluster: axispay-training
+      environment: training
+
+# ---- Alertmanager ------------------------------------------------------------
+alertmanager:
+  alertmanagerSpec:
+    # Honour AlertmanagerConfig objects from any namespace — that is how
+    # manifests/day5/observability/03-alertmanager-config.yaml gets applied.
+    alertmanagerConfigSelector:
+      matchLabels:
+        release: kube-prometheus-stack
+    resources:
+      requests: { cpu: 25m, memory: 64Mi }
+      limits:   { cpu: 150m, memory: 192Mi }
+    storage:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: standard
+          accessModes: [ReadWriteOnce]
+          resources:
+            requests:
+              storage: 1Gi
+
+# ---- Grafana -----------------------------------------------------------------
+grafana:
+  # Training only. A real deployment uses SSO, and this password would be a
+  # finding in any audit. It is written in the clear here so nobody wastes lab
+  # time hunting for it.
+  adminPassword: axispay-training
+  defaultDashboardsTimezone: Africa/Johannesburg
+
+  resources:
+    requests: { cpu: 50m, memory: 128Mi }
+    limits:   { cpu: 300m, memory: 384Mi }
+
+  # The sidecar that turns a labelled ConfigMap into a provisioned dashboard.
+  # This is what makes manifests/day5/observability/04-grafana-dashboards.yaml
+  # work with no import step.
+  sidecar:
+    dashboards:
+      enabled: true
+      label: grafana_dashboard
+      labelValue: "1"
+      searchNamespace: ALL
+      folderAnnotation: grafana_folder
+      provider:
+        foldersFromFilesStructure: true
+    datasources:
+      enabled: true
+      label: grafana_datasource
+      searchNamespace: ALL
+
+  # Loki is added as a datasource here so the log panels resolve. The
+  # Prometheus datasource is created by the chart itself.
+  additionalDataSources:
+    - name: Loki
+      type: loki
+      uid: loki
+      access: proxy
+      url: http://loki-gateway.axispay-observability.svc.cluster.local
+      jsonData:
+        maxLines: 1000
+        # Turn a correlation_id in a log line into a link. This is the whole
+        # payoff of structured logging: click a log, land on the trace of the
+        # request that produced it.
+        derivedFields:
+          - name: correlation_id
+            matcherRegex: '"correlation_id":"([^"]+)"'
+            url: '/explore?left={"queries":[{"expr":"{namespace=~\"axispay-.*\"} | json | correlation_id=`$${__value.raw}`"}]}'
+
+  ingress:
+    enabled: true
+    ingressClassName: nginx
+    hosts: [grafana.axispay.local]
+    path: /
+    pathType: Prefix
+
+# ---- Components we deliberately turn off -------------------------------------
+# Each of these scrapes a control-plane component that Minikube either does not
+# expose or exposes on a different address. Leaving them on produces a wall of
+# permanently-down targets, and a monitoring system with permanently-red
+# targets trains people to ignore red.
+kubeApiServer:      { enabled: true }
+kubelet:            { enabled: true }
+kubeControllerManager: { enabled: false }
+kubeScheduler:      { enabled: false }
+kubeProxy:          { enabled: false }
+kubeEtcd:           { enabled: false }
+
+# node-exporter gives host CPU, memory and disk. Worth keeping: the "is the
+# node full" question comes up in almost every incident.
+nodeExporter:
+  enabled: true
+prometheus-node-exporter:
+  resources:
+    requests: { cpu: 25m, memory: 32Mi }
+    limits:   { cpu: 100m, memory: 96Mi }
+
+# kube-state-metrics is NOT optional. Half the alerts and most of the triage
+# dashboard are built on kube_* series, and they come from here.
+kubeStateMetrics:
+  enabled: true
+kube-state-metrics:
+  resources:
+    requests: { cpu: 25m, memory: 64Mi }
+    limits:   { cpu: 150m, memory: 192Mi }
+
+# The bundled dashboards are good, but there are about thirty of them and they
+# bury the two that matter. Keep the Kubernetes ones, drop the rest.
+defaultRules:
+  create: true
+  rules:
+    etcd: false
+    kubeSchedulerAlerting: false
+    kubeControllerManager: false
+    kubeProxy: false

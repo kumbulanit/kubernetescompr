@@ -1,0 +1,152 @@
+{{/*
+Alerts on SYMPTOMS the merchant can feel, not on causes.
+
+"CPU is high" is not an alert — it is a fact that may or may not matter.
+"One in two hundred payments is failing" always matters. Every rule below
+fires on something a person outside the platform team would notice.
+
+The `for:` clause is what separates an alert from a notification. Without it a
+single slow scrape pages someone at 03:00.
+*/}}
+{{- if and .Values.observability.enabled .Values.observability.alerts.enabled }}
+{{- $errBudget := sub 100.0 .Values.observability.alerts.availabilitySLO }}
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: axispay-slo
+  namespace: {{ .Values.namespaces.observability }}
+  labels:
+    {{- include "axispay.labels" . | nindent 4 }}
+    release: kube-prometheus-stack
+spec:
+  groups:
+    - name: axispay.availability
+      interval: 30s
+      rules:
+        - alert: AxisPayPaymentErrorRateHigh
+          expr: |
+            (
+              sum(rate(axispay_http_requests_total{service="payment-service",status=~"5.."}[5m]))
+              /
+              sum(rate(axispay_http_requests_total{service="payment-service"}[5m]))
+            ) > {{ divf $errBudget 100 }}
+          for: 5m
+          labels:
+            severity: critical
+            team: payments
+          annotations:
+            summary: "Payment error rate above the {{ .Values.observability.alerts.availabilitySLO }}% SLO"
+            description: "{{`{{ $value | humanizePercentage }}`}} of payment requests are failing."
+            runbook_url: "https://runbooks.axis.example/axispay/payment-error-rate"
+
+        - alert: AxisPayPaymentLatencyHigh
+          expr: |
+            histogram_quantile(0.99,
+              sum by (le) (rate(axispay_http_request_duration_seconds_bucket{service="payment-service"}[5m]))
+            ) > {{ divf .Values.observability.alerts.latencyP99Ms 1000 }}
+          for: 10m
+          labels:
+            severity: warning
+            team: payments
+          annotations:
+            summary: "p99 payment latency above {{ .Values.observability.alerts.latencyP99Ms }}ms"
+            runbook_url: "https://runbooks.axis.example/axispay/latency"
+
+        - alert: AxisPayServiceNoReadyEndpoints
+          expr: |
+            kube_endpoint_address_available{namespace=~"axispay-.*"} == 0
+          for: 2m
+          labels:
+            severity: critical
+          annotations:
+            summary: "{{`{{ $labels.endpoint }}`}} has zero ready endpoints"
+            description: "Every pod behind this Service is failing readiness. Callers are getting connection refused."
+            runbook_url: "https://runbooks.axis.example/axispay/no-endpoints"
+
+    - name: axispay.workloads
+      interval: 30s
+      rules:
+        - alert: AxisPayPodCrashLooping
+          expr: |
+            increase(kube_pod_container_status_restarts_total{namespace=~"axispay-.*"}[15m]) > 3
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: "{{`{{ $labels.pod }}`}} is restarting repeatedly"
+            runbook_url: "https://runbooks.axis.example/axispay/crashloop"
+
+        - alert: AxisPayContainerOOMKilled
+          expr: |
+            kube_pod_container_status_last_terminated_reason{reason="OOMKilled",namespace=~"axispay-.*"} == 1
+          for: 1m
+          labels:
+            severity: warning
+          annotations:
+            summary: "{{`{{ $labels.container }}`}} was OOMKilled — the memory limit is too low or there is a leak"
+            runbook_url: "https://runbooks.axis.example/axispay/oomkill"
+
+        - alert: AxisPayHPAAtMaxReplicas
+          expr: |
+            kube_horizontalpodautoscaler_status_current_replicas{namespace=~"axispay-.*"}
+              >= kube_horizontalpodautoscaler_spec_max_replicas{namespace=~"axispay-.*"}
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: "{{`{{ $labels.horizontalpodautoscaler }}`}} is pinned at max replicas"
+            description: "Autoscaling has no headroom left. The next traffic increase degrades service."
+
+    - name: axispay.batch
+      interval: 60s
+      rules:
+        - alert: AxisPayReconciliationDidNotRun
+          expr: |
+            time() - kube_cronjob_status_last_successful_time{cronjob="settlement-cron"} > 93600
+          for: 10m
+          labels:
+            severity: critical
+            team: finance-ops
+          annotations:
+            summary: "Nightly reconciliation has not succeeded in over 26 hours"
+            description: "The ledger has not been reconciled. Settlement figures are unverified."
+            runbook_url: "https://runbooks.axis.example/axispay/recon-missed"
+
+    - name: axispay.business
+      interval: 60s
+      rules:
+        - alert: AxisPayNoPaymentsReceived
+          expr: |
+            sum(rate(axispay_payments_total[10m])) == 0
+          for: 10m
+          labels:
+            severity: critical
+            team: payments
+          annotations:
+            summary: "No payments have been accepted for ten minutes"
+            description: >-
+              Every pod is Ready and no error rate is elevated, so nothing else
+              will fire. Traffic reaching zero is the failure that infrastructure
+              alerts cannot see — a broken DNS record, an expired API key at the
+              merchant end, a load balancer pointing nowhere.
+            runbook_url: "https://runbooks.axis.example/axispay/no-traffic"
+
+        - alert: AxisPayDeclineRateHigh
+          expr: |
+            (
+              sum(rate(axispay_payments_total{status="declined"}[15m]))
+              /
+              sum(rate(axispay_payments_total[15m]))
+            ) > 0.25
+          for: 15m
+          labels:
+            severity: warning
+            team: risk
+          annotations:
+            summary: "More than a quarter of payments are being declined"
+            description: >-
+              This is a BUSINESS alert, not an infrastructure one. The platform
+              is healthy; the outcomes are not. A fraud rule deployed too tight
+              and a failing acquirer look identical from the pod's point of view.
+            runbook_url: "https://runbooks.axis.example/axispay/decline-rate"
+{{- end }}

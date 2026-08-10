@@ -1,0 +1,14 @@
+%% D5 M5.6 — Prometheus decides WHETHER; Alertmanager decides WHO
+graph LR
+    P["<b>Prometheus</b><br/>evaluates the rule<br/><i>WHETHER</i>"] -->|firing| AM["<b>Alertmanager</b><br/><i>WHO, and HOW OFTEN</i>"]
+    AM --> GR["<b>GROUP</b><br/>8 pods, 1 fault -> 1 notification"]
+    GR --> IN["<b>INHIBIT</b><br/>root symptom suppresses<br/>the derived ones"]
+    IN --> TH["<b>THROTTLE</b><br/>repeatInterval stops<br/>a 4-hour page storm"]
+    TH --> RT{"<b>ROUTE</b><br/>match on labels"}
+    RT -->|"team=payments<br/>severity=critical"| R1["payments-oncall"]
+    RT -->|"team=finance-ops"| R2["finance-ops"]
+    RT -->|"team=risk"| R3["risk-team"]
+    RT -->|otherwise| R4["platform"]
+    R1 --> SINK["alert-sink<br/><i>proves the routing<br/>instead of assuming it</i>"]
+    style RT fill:#1f2b3b,stroke:#42a5f5,color:#fff
+    style SINK fill:#1f3b2b,stroke:#66bb6a,color:#fff

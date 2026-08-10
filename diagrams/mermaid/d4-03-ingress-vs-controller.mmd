@@ -1,0 +1,13 @@
+%% D4 M4.4 — two objects, and confusing them is the common failure
+graph LR
+    M["Merchant<br/>https://api.axispay.local"]
+    IC["<b>Ingress CONTROLLER</b><br/>ingress-nginx pod<br/><i>the thing that PROXIES</i>"]
+    IR["<b>Ingress RESOURCE</b><br/><i>the RULES it reads</i><br/>host · path · TLS · backend"]
+    GW["edge-gateway Service"]
+    NONE["No controller?<br/>kubectl get ingress looks fine.<br/><b>ADDRESS is empty. Nothing works.</b>"]
+    M -->|"TLS :443"| IC
+    IR -.->|"read by"| IC
+    IC -->|"http :8080"| GW
+    IR -.-> NONE
+    style IC fill:#1f3b2b,stroke:#66bb6a,color:#fff
+    style NONE fill:#3b1f1f,stroke:#d32f2f,color:#fff

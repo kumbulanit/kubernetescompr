@@ -1,0 +1,62 @@
+{{/*
+node-agent is a DaemonSet, not a Deployment with replicas: 3.
+The difference matters the moment someone adds a node: a DaemonSet covers it
+automatically, a Deployment does not. It also tolerates the control-plane taint
+because node telemetry with a hole in it is not telemetry.
+*/}}
+{{- range $name, $ds := .Values.daemonsets }}
+{{- if $ds.enabled }}
+{{- $ns := include "axispay.namespace" (dict "root" $ "zone" $ds.zone "name" $name) }}
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: {{ $name }}
+  namespace: {{ $ns }}
+  labels:
+    {{- include "axispay.labels" $ | nindent 4 }}
+    {{- include "axispay.selectorLabels" (dict "root" $ "name" $name) | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "axispay.selectorLabels" (dict "root" $ "name" $name) | nindent 6 }}
+  updateStrategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+  template:
+    metadata:
+      labels:
+        {{- include "axispay.labels" $ | nindent 8 }}
+        {{- include "axispay.selectorLabels" (dict "root" $ "name" $name) | nindent 8 }}
+    spec:
+      serviceAccountName: {{ $name }}
+      automountServiceAccountToken: {{ $ds.automountToken | default false }}
+      {{- if $ds.tolerateControlPlane }}
+      tolerations:
+        - key: node-role.kubernetes.io/control-plane
+          operator: Exists
+          effect: NoSchedule
+      {{- end }}
+      securityContext:
+        {{- include "axispay.podSecurityContext" $ | nindent 8 }}
+      containers:
+        - name: {{ $name }}
+          image: {{ include "axispay.image" (dict "root" $ "name" $name "tag" $ds.tag) }}
+          imagePullPolicy: {{ $.Values.global.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 8080
+          env:
+            {{- include "axispay.commonEnv" (dict "root" $ "name" $name) | nindent 12 }}
+          resources:
+            {{- toYaml $ds.resources | nindent 12 }}
+          {{- include "axispay.probes" $ | nindent 10 }}
+          securityContext:
+            {{- include "axispay.containerSecurityContext" $ | nindent 12 }}
+          volumeMounts:
+            {{- include "axispay.tmpVolumeMounts" $ | nindent 12 }}
+      volumes:
+        {{- include "axispay.tmpVolumes" $ | nindent 8 }}
+{{- end }}
+{{- end }}

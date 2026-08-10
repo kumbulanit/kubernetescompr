@@ -1,0 +1,23 @@
+%% D1 M1.8 — Service -> EndpointSlice -> kube-proxy
+graph LR
+    CLIENT["edge-gateway pod"]
+    DNS["<b>CoreDNS</b><br/>payment-service.axispay-core<br/>→ 10.96.14.22"]
+    SVC["<b>Service</b> ClusterIP 10.96.14.22<br/><i>selector:<br/>name=payment-service</i>"]
+    EPS["<b>EndpointSlice</b><br/><i>written by the<br/>endpoint controller</i><br/>10.244.1.5<br/>10.244.2.7<br/>10.244.2.9"]
+    KP["<b>kube-proxy</b><br/>iptables / IPVS rules<br/><i>no process in the path</i>"]
+    P1["Pod x7k2p"]
+    P2["Pod m9v4t"]
+    P3["Pod p2n8w"]
+    ORPHAN["Pod quarantined<br/><i>label changed →<br/>silently removed</i>"]
+
+    CLIENT -->|1. resolve| DNS
+    DNS --> SVC
+    SVC -->|2. selects by LABEL| EPS
+    EPS -->|3. programs| KP
+    KP --> P1
+    KP --> P2
+    KP --> P3
+    ORPHAN -.->|"no longer selected"| EPS
+    style SVC fill:#1f2b3b,stroke:#42a5f5,color:#fff
+    style EPS fill:#1f3b2b,stroke:#66bb6a,color:#fff
+    style ORPHAN fill:#3b1f1f,stroke:#d32f2f,color:#fff

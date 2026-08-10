@@ -1,0 +1,11 @@
+%% D3 M3.1 — the two consumption modes behave completely differently
+graph LR
+    CM["<b>ConfigMap</b>"]
+    E["<b>env / envFrom</b><br/>SNAPSHOT at container start<br/><i>changing the ConfigMap does<br/>NOTHING to a running pod</i>"]
+    V["<b>volumeMount</b><br/>projected file, updated IN PLACE<br/><i>~60s kubelet sync;<br/>the app must re-read it</i>"]
+    R1["needs a rollout"]
+    R2["no restart"]
+    CM --> E --> R1
+    CM --> V --> R2
+    style E fill:#3b2f1f,stroke:#ffa726,color:#fff
+    style V fill:#1f3b2b,stroke:#66bb6a,color:#fff

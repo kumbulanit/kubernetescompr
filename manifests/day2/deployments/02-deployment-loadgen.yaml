@@ -1,0 +1,81 @@
+# ==============================================================================
+# loadgen — the instrument that makes availability claims falsifiable
+# ==============================================================================
+# "Rolling updates are zero-downtime" is an assertion.
+# "4,812 requests, 0 failures, across the whole rollout" is evidence.
+#
+#   kubectl port-forward -n axispay-ops deploy/loadgen 8090:8080
+#   curl -s localhost:8090/api/v1/loadgen/stats | python3 -m json.tool
+#   curl -s -X POST localhost:8090/api/v1/loadgen/start -d '{"rps":40}' \
+#        -H 'Content-Type: application/json'
+# ==============================================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: loadgen
+  namespace: axispay-ops
+  labels: &labels
+    app.kubernetes.io/name: loadgen
+    app.kubernetes.io/instance: axispay
+    app.kubernetes.io/version: "1.0.0"
+    app.kubernetes.io/component: ops
+    app.kubernetes.io/part-of: axispay
+    axispay.io/day-introduced: "2"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: loadgen
+      app.kubernetes.io/instance: axispay
+  template:
+    metadata:
+      labels: *labels
+    spec:
+      terminationGracePeriodSeconds: 10
+      containers:
+        - name: loadgen
+          image: axispay/loadgen:1.0.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+          resources:
+            # Deliberately capped. A load generator that competes with the
+            # platform it is measuring produces numbers you cannot trust.
+            requests: { cpu: "50m", memory: "64Mi" }
+            limits:   { cpu: "250m", memory: "128Mi" }
+          startupProbe:
+            httpGet: { path: /startupz, port: http }
+            periodSeconds: 2
+            failureThreshold: 30
+          livenessProbe:
+            httpGet: { path: /healthz, port: http }
+            periodSeconds: 15
+            timeoutSeconds: 3
+            failureThreshold: 3
+          readinessProbe:
+            # loadgen has no downstream dependency of its own — it is the thing
+            # generating load, and it must keep measuring even while the
+            # platform it points at is failing. Its readiness therefore reports
+            # only its own health, which is exactly the right answer for a
+            # measurement tool: an instrument that stops working when the
+            # subject breaks tells you nothing about the breakage.
+            httpGet: { path: /readyz, port: http }
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          env:
+            - name: ENVIRONMENT
+              value: "training"
+            - name: TARGET_URL
+              value: "http://edge-gateway.axispay-edge.svc.cluster.local:8080"
+            - name: REQUESTS_PER_SECOND
+              value: "5"
+            - name: AUTOSTART
+              value: "true"
+            - name: POD_NAME
+              valueFrom: { fieldRef: { fieldPath: metadata.name } }
+            - name: NODE_NAME
+              valueFrom: { fieldRef: { fieldPath: spec.nodeName } }
+            - name: NAMESPACE
+              valueFrom: { fieldRef: { fieldPath: metadata.namespace } }

@@ -1,0 +1,14 @@
+%% D2 M2.6 — maxSurge 1, maxUnavailable 0
+graph TB
+    T0["<b>t0</b>  RS-A: 3 ready (v1.0.0)<br/>total 3 · serving 3"]
+    T1["<b>t1</b>  RS-B: +1 pod created<br/>total 4 · serving 3 <i>(new not ready yet)</i>"]
+    T2["<b>t2</b>  new pod passes READINESS<br/>total 4 · serving 4"]
+    T3["<b>t3</b>  one old pod terminates<br/>preStop 8s → SIGTERM → drain<br/>total 3 · serving 3"]
+    T4["<b>t4</b>  repeat twice more"]
+    T5["<b>t5</b>  RS-B: 3 ready (v1.1.0)<br/>RS-A: 0 replicas · <i>kept for rollback</i>"]
+    T0 --> T1 --> T2 --> T3 --> T4 --> T5
+    NOTE["Serving capacity NEVER drops below 3.<br/>Cost: headroom for 1 extra pod, and a slower release."]
+    T5 -.-> NOTE
+    style T2 fill:#1f3b2b,stroke:#66bb6a,color:#fff
+    style T5 fill:#1f3b2b,stroke:#66bb6a,color:#fff
+    style NOTE fill:#3b2f1f,stroke:#ffa726,color:#fff

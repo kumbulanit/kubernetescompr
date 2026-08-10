@@ -1,0 +1,22 @@
+%% D2 M2.5 — choosing a controller
+graph TD
+    Q1{"Does it run<br/>forever?"}
+    Q2{"One per NODE?"}
+    Q3{"Needs stable identity<br/>+ its own storage?"}
+    Q4{"On a schedule?"}
+    DEP["<b>Deployment</b><br/>N interchangeable replicas"]
+    DS["<b>DaemonSet</b><br/>one per node · no replica count"]
+    SS["<b>StatefulSet</b><br/>ordered · stable names + volumes<br/><i>Day 3</i>"]
+    JOB["<b>Job</b><br/>run to completion · success = exit 0"]
+    CJ["<b>CronJob</b><br/>creates a Job on a schedule"]
+    Q1 -->|yes| Q2
+    Q2 -->|yes| DS
+    Q2 -->|no| Q3
+    Q3 -->|yes| SS
+    Q3 -->|no| DEP
+    Q1 -->|no| Q4
+    Q4 -->|yes| CJ
+    Q4 -->|no| JOB
+    style DS fill:#1f3b2b,stroke:#66bb6a,color:#fff
+    style JOB fill:#3b2f1f,stroke:#ffa726,color:#fff
+    style SS fill:#2b2b2b,stroke:#888,color:#aaa

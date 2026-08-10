@@ -1,0 +1,71 @@
+# ==============================================================================
+# edge-gateway — Deployment
+# Public API gateway - merchant-facing entry point
+# ==============================================================================
+# Introduced: Day 1, L1.4 / L1.6
+#
+# Deliberately MINIMAL for Day 1. There are no resource requests, no probes and
+# no securityContext yet — those are added on Days 2 and 3, on top of this same
+# object, so students can see each layer solve a specific problem they have
+# already felt.
+#
+# If you are reading this file looking for a production template, use
+# manifests/day5/ or charts/axispay/ instead.
+# ==============================================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: edge-gateway
+  namespace: axispay-edge
+  labels: &labels
+    app.kubernetes.io/name: edge-gateway
+    app.kubernetes.io/instance: axispay
+    app.kubernetes.io/version: "1.0.0"
+    app.kubernetes.io/component: edge
+    app.kubernetes.io/part-of: axispay
+    app.kubernetes.io/managed-by: kubectl
+    axispay.io/zone: edge
+    axispay.io/day-introduced: "1"
+  annotations:
+    axispay.io/description: "Public API gateway - merchant-facing entry point"
+spec:
+  replicas: 2
+  # The selector is IMMUTABLE after creation. Choosing it carelessly on Day 1
+  # means deleting and recreating the Deployment later — which is why it uses
+  # only the two labels that will never change, not the whole label set.
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: edge-gateway
+      app.kubernetes.io/instance: axispay
+  template:
+    metadata:
+      labels: *labels
+    spec:
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: edge-gateway
+          image: axispay/edge-gateway:1.0.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          env:
+            - name: ENVIRONMENT
+              value: "training"
+            - name: LOG_LEVEL
+              value: "info"
+            - name: POD_NAME
+              valueFrom: { fieldRef: { fieldPath: metadata.name } }
+            - name: POD_IP
+              valueFrom: { fieldRef: { fieldPath: status.podIP } }
+            - name: NODE_NAME
+              valueFrom: { fieldRef: { fieldPath: spec.nodeName } }
+            - name: NAMESPACE
+              valueFrom: { fieldRef: { fieldPath: metadata.namespace } }
+            - name: AUTH_SERVICE_URL
+              value: "http://auth-service.axispay-edge.svc.cluster.local:8080"
+            - name: PAYMENT_SERVICE_URL
+              value: "http://payment-service.axispay-core.svc.cluster.local:8080"
+            - name: MERCHANT_SERVICE_URL
+              value: "http://merchant-service.axispay-core.svc.cluster.local:8080"

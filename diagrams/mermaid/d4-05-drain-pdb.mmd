@@ -1,0 +1,16 @@
+%% D4 M4.7 — what a PodDisruptionBudget actually gates
+graph TB
+    D["kubectl drain node-2"]
+    C["1. CORDON — node unschedulable"]
+    E["2. EVICT pods one at a time"]
+    P{"<b>PodDisruptionBudget</b><br/>would this breach<br/>maxUnavailable?"}
+    OK["evict — replacement<br/>schedules elsewhere"]
+    W["<b>WAIT</b> until a<br/>replacement is Ready"]
+    NOTE["Voluntary disruption ONLY.<br/>A PDB cannot protect against a node crash,<br/>an OOM kill or a failing probe."]
+    D --> C --> E --> P
+    P -->|no| OK
+    P -->|yes| W --> P
+    P -.-> NOTE
+    style P fill:#1f3b2b,stroke:#66bb6a,color:#fff
+    style W fill:#3b2f1f,stroke:#ffa726,color:#fff
+    style NOTE fill:#2b2b2b,stroke:#888,color:#ccc

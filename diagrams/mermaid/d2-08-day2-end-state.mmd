@@ -1,0 +1,32 @@
+%% D2 — platform at 17:00 Tuesday
+graph TB
+    subgraph E["axispay-edge"]
+        GW["edge-gateway<br/>2 replicas · probes · resources"]
+        AU["auth-service<br/>2 replicas"]
+    end
+    subgraph C["axispay-core — ResourceQuota + LimitRange"]
+        PS["payment-service <b>v1.1.0</b><br/>HPA 3→8"]
+        MS["merchant-service<br/>2 replicas"]
+        FS["fraud-service<br/>HPA 2→6 · CPU bound"]
+        RS["routing-service<br/>2 replicas"]
+    end
+    subgraph A["axispay-async"]
+        JOB["recon-worker<br/><i>Job</i>"]
+        CJ["settlement-cron<br/><i>CronJob 23:00</i>"]
+    end
+    subgraph O["axispay-ops"]
+        NA["node-agent<br/><i>DaemonSet · 1/node</i>"]
+        LG["loadgen<br/><i>the evidence</i>"]
+    end
+    GW --> AU
+    GW --> PS
+    PS --> MS
+    PS --> FS
+    PS --> RS
+    LG -->|40 rps| GW
+    JOB -.-> PS
+    CJ -.-> PS
+    style C fill:#3b1f2b,stroke:#c2185b,color:#fff
+    style E fill:#2b3b1f,stroke:#689f38,color:#fff
+    style A fill:#2b2b3b,stroke:#5c6bc0,color:#fff
+    style O fill:#2b1f3b,stroke:#ab47bc,color:#fff

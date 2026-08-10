@@ -1,0 +1,333 @@
+# ==============================================================================
+# AxisPay — default values
+# ==============================================================================
+# These defaults are DEVELOPMENT-SAFE, not production-safe. Every environment
+# file (values-dev / values-staging / values-prod) overrides what it needs.
+#
+# The services below are rendered by ONE template that ranges over this map.
+# Fifteen near-identical Deployment files would be fifteen places to forget a
+# probe; one template plus a data structure is the idiomatic Helm answer, and
+# it makes "every service has a readiness probe" true by construction.
+# ==============================================================================
+
+global:
+  image:
+    registry: ""              # empty = built locally into the Minikube runtime
+    repository: axispay
+    tag: "1.0.0"
+    pullPolicy: IfNotPresent
+  environment: training
+  logLevel: info
+  defaultCurrency: ZAR
+  supportedCurrencies: "ZAR,USD,EUR,GBP,NGN,KES,BWP"
+  downstreamTimeoutSeconds: "5.0"
+
+# ---- cross-cutting toggles ---------------------------------------------------
+networkPolicy:
+  enabled: true
+  # The node network. Egress to the API server and the kubelet cannot be
+  # expressed with a namespaceSelector — neither is a pod — so it has to be an
+  # ipBlock. This is the Minikube docker-driver default; find yours with
+  #   kubectl get endpoints kubernetes -n default
+  nodeCIDR: 192.168.49.0/24
+podDisruptionBudget:
+  enabled: true
+podSecurity:
+  enforce: restricted
+serviceAccount:
+  create: true
+  automountToken: false       # only prometheus and node-agent need a token
+
+# ---- security baseline applied to EVERY service ------------------------------
+securityContext:
+  pod:
+    runAsNonRoot: true
+    runAsUser: 10001
+    runAsGroup: 10001
+    fsGroup: 10001
+    seccompProfile:
+      type: RuntimeDefault
+  container:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    capabilities:
+      drop: ["ALL"]
+
+# ---- probe defaults ----------------------------------------------------------
+probes:
+  startup:
+    path: /startupz
+    periodSeconds: 2
+    failureThreshold: 30
+  liveness:
+    path: /healthz           # NEVER /readyz — see the Day 2 cascading-failure lab
+    periodSeconds: 10
+    timeoutSeconds: 3
+    failureThreshold: 3
+  readiness:
+    path: /readyz
+    periodSeconds: 5
+    timeoutSeconds: 3
+    failureThreshold: 2
+
+# ---- release strategy --------------------------------------------------------
+strategy:
+  maxUnavailable: 0          # capacity never drops during a release
+  maxSurge: 1
+terminationGracePeriodSeconds: 45
+preStopSleepSeconds: 8       # lets endpoint removal propagate to every node
+
+# ---- namespaces --------------------------------------------------------------
+namespaces:
+  edge: axispay-edge
+  core: axispay-core
+  async: axispay-async
+  data: axispay-data
+  ops: axispay-ops
+  observability: axispay-observability
+
+# ==============================================================================
+# SERVICES — one entry renders a Deployment, a Service and optionally a PDB
+# ==============================================================================
+services:
+  edge-gateway:
+    enabled: true
+    zone: edge
+    replicas: 2
+    resources:
+      requests: { cpu: 50m, memory: 64Mi }
+      limits:   { cpu: 300m, memory: 192Mi }
+    pdb: { maxUnavailable: 1 }
+    env:
+      AUTH_SERVICE_URL: http://auth-service.axispay-edge.svc.cluster.local:8080
+      PAYMENT_SERVICE_URL: http://payment-service.axispay-core.svc.cluster.local:8080
+      MERCHANT_SERVICE_URL: http://merchant-service.axispay-core.svc.cluster.local:8080
+
+  auth-service:
+    enabled: true
+    zone: edge
+    replicas: 2
+    resources:
+      requests: { cpu: 50m, memory: 64Mi }
+      limits:   { cpu: 250m, memory: 160Mi }
+    pdb: { maxUnavailable: 1 }
+    secretEnv:
+      JWT_SIGNING_KEY: { secret: axispay-jwt-signing, key: JWT_SIGNING_KEY }
+
+  payment-service:
+    enabled: true
+    zone: core
+    replicas: 3
+    resources:
+      requests: { cpu: 100m, memory: 96Mi }
+      limits:   { cpu: 500m, memory: 256Mi }
+    pdb: { maxUnavailable: 1 }
+    hpa: { enabled: true, minReplicas: 3, maxReplicas: 8, targetCPU: 70 }
+    antiAffinity: required        # the payment path must survive a node loss
+    env:
+      ENABLE_RISK_ROUTING: "true"
+      MERCHANT_SERVICE_URL: http://merchant-service.axispay-core.svc.cluster.local:8080
+      FRAUD_SERVICE_URL: http://fraud-service.axispay-core.svc.cluster.local:8080
+      ROUTING_SERVICE_URL: http://routing-service.axispay-core.svc.cluster.local:8080
+      LEDGER_SERVICE_URL: http://ledger-service.axispay-core.svc.cluster.local:8080
+      CUSTOMER_SERVICE_URL: http://customer-service.axispay-core.svc.cluster.local:8080
+    secretEnv:
+      DATABASE_URL: { secret: axispay-db-credentials, key: DATABASE_URL }
+
+  merchant-service:
+    enabled: true
+    zone: core
+    replicas: 2
+    resources:
+      requests: { cpu: 50m, memory: 64Mi }
+      limits:   { cpu: 250m, memory: 160Mi }
+    pdb: { maxUnavailable: 1 }
+    secretEnv:
+      DATABASE_URL: { secret: axispay-db-credentials, key: DATABASE_URL }
+
+  fraud-service:
+    enabled: true
+    zone: core
+    replicas: 2
+    resources:
+      requests: { cpu: 150m, memory: 80Mi }
+      limits:   { cpu: 600m, memory: 192Mi }
+    pdb: { maxUnavailable: 1 }
+    hpa: { enabled: true, minReplicas: 2, maxReplicas: 6, targetCPU: 65 }
+    antiAffinity: preferred       # its HPA scales past the node count
+    secretEnv:
+      REDIS_URL: { secret: axispay-db-credentials, key: REDIS_URL }
+
+  routing-service:
+    enabled: true
+    zone: core
+    replicas: 2
+    resources:
+      requests: { cpu: 60m, memory: 72Mi }
+      limits:   { cpu: 300m, memory: 192Mi }
+
+  ledger-service:
+    enabled: true
+    zone: core
+    replicas: 2
+    resources:
+      requests: { cpu: 50m, memory: 72Mi }
+      limits:   { cpu: 250m, memory: 192Mi }
+    secretEnv:
+      DATABASE_URL: { secret: axispay-db-credentials, key: DATABASE_URL }
+
+  customer-service:
+    enabled: true
+    zone: core
+    replicas: 2
+    resources:
+      requests: { cpu: 50m, memory: 72Mi }
+      limits:   { cpu: 250m, memory: 192Mi }
+    secretEnv:
+      DATABASE_URL: { secret: axispay-db-credentials, key: DATABASE_URL }
+
+  settlement-service:
+    enabled: true
+    zone: async
+    replicas: 2
+    resources:
+      requests: { cpu: 50m, memory: 72Mi }
+      limits:   { cpu: 250m, memory: 192Mi }
+    env:
+      PAYMENT_SERVICE_URL: http://payment-service.axispay-core.svc.cluster.local:8080
+
+  notification-service:
+    enabled: true
+    zone: async
+    replicas: 2
+    resources:
+      requests: { cpu: 50m, memory: 72Mi }
+      limits:   { cpu: 250m, memory: 192Mi }
+    env:
+      MERCHANT_SERVICE_URL: http://merchant-service.axispay-core.svc.cluster.local:8080
+
+  audit-service:
+    enabled: true
+    zone: async
+    replicas: 2
+    resources:
+      requests: { cpu: 50m, memory: 72Mi }
+      limits:   { cpu: 250m, memory: 192Mi }
+
+  reporting-service:
+    enabled: true
+    zone: async
+    replicas: 3
+    resources:
+      requests: { cpu: 50m, memory: 72Mi }
+      limits:   { cpu: 250m, memory: 192Mi }
+    env:
+      PAYMENT_SERVICE_URL: http://payment-service.axispay-core.svc.cluster.local:8080
+
+  # alert-sink is not part of the payment platform — it is the receiver at the
+  # end of every Alertmanager route, and it exists so alert routing can be
+  # tested rather than assumed. One replica: it holds alerts in memory, so two
+  # would each hold half the story.
+  alert-sink:
+    enabled: true
+    zone: observability
+    replicas: 1
+    resources:
+      requests: { cpu: 25m, memory: 64Mi }
+      limits:   { cpu: 150m, memory: 192Mi }
+
+# ---- ingress -----------------------------------------------------------------
+ingress:
+  enabled: true
+  className: nginx
+  sslRedirect: true
+  api:
+    host: api.axispay.local
+    tlsSecret: axispay-tls
+    service: edge-gateway
+    path: /api/v1
+    rateLimitRps: 50
+  portal:
+    host: portal.axispay.local
+    tlsSecret: axispay-portal-tls
+    service: reporting-service
+    path: /api/v1/reports
+    rateLimitRps: 10
+
+# ---- observability -----------------------------------------------------------
+observability:
+  enabled: true
+  serviceMonitor:
+    enabled: true
+    interval: 30s
+    path: /metrics
+  alerts:
+    enabled: true
+    availabilitySLO: 99.5
+    latencyP99Ms: 300
+
+# ==============================================================================
+# NON-DEPLOYMENT WORKLOADS
+# ==============================================================================
+# node-agent is a DaemonSet because "one per node" is the requirement, not
+# "N replicas". recon-worker is a CronJob because it runs to completion.
+# Modelling either as a Deployment is the single most common workload-kind
+# mistake — see Day 2, M2.5.
+daemonsets:
+  node-agent:
+    enabled: true
+    zone: ops
+    automountToken: true         # it reads the Node API — it needs a token
+    resources:
+      requests: { cpu: 25m, memory: 48Mi }
+      limits:   { cpu: 150m, memory: 128Mi }
+    tolerateControlPlane: true
+
+cronjobs:
+  # The object is settlement-cron; the IMAGE is recon-worker. They differ on
+  # purpose: an object name describes the job to be done, an image name
+  # describes the code that does it, and one image often serves several
+  # schedules. Assuming the two must match is a habit worth breaking early.
+  settlement-cron:
+    enabled: true
+    zone: async
+    image: recon-worker
+    schedule: "0 23 * * *"            # end of the merchant business day
+    timeZone: "Africa/Johannesburg"   # DST is why this field exists
+    concurrencyPolicy: Forbid
+    backoffLimit: 2
+    startingDeadlineSeconds: 600
+    activeDeadlineSeconds: 1800       # a batch still running after 30 min is stuck
+    successfulJobsHistoryLimit: 3
+    failedJobsHistoryLimit: 3
+    env:
+      RECON_MODE: "normal"
+      PAYMENT_SERVICE_URL: http://payment-service.axispay-core.svc.cluster.local:8080
+    resources:
+      requests: { cpu: 50m, memory: 64Mi }
+      limits:   { cpu: 300m, memory: 160Mi }
+
+# loadgen is deliberately DISABLED by default. It is a teaching instrument,
+# not part of the platform; enable it only for the scaling and SLO labs.
+loadgen:
+  enabled: false
+  zone: ops
+  replicas: 1
+  targetRps: 20
+  resources:
+    requests: { cpu: 50m, memory: 64Mi }
+    limits:   { cpu: 400m, memory: 192Mi }
+
+# ---- data tier ---------------------------------------------------------------
+# Off by default: the chart assumes the Day 3 StatefulSets already exist.
+# Turning this on gives a self-contained install for a fresh cluster.
+data:
+  enabled: false
+  postgres:
+    image: postgres:17-alpine
+    storage: 4Gi
+    storageClass: standard
+  redis:
+    image: redis:7.4-alpine
+    storage: 1Gi
+    storageClass: standard

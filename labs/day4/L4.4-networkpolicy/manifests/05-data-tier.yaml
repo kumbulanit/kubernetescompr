@@ -1,0 +1,29 @@
+# ==============================================================================
+# STEP 5 — the vault. THE control that keeps the DMZ out of the CDE.
+# ==============================================================================
+# Only axispay-core and axispay-async may reach the data tier. Note again what
+# is absent: axispay-edge. On Day 3 you could exec into edge-gateway and
+# connect straight to PostgreSQL. This is the policy that ends that, and in a
+# PCI assessment it is the difference between the DMZ being in scope and out.
+# ==============================================================================
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-core-and-async-to-data
+  namespace: axispay-data
+  labels: { app.kubernetes.io/part-of: axispay, axispay.io/day-introduced: "4" }
+  annotations:
+    axispay.io/description: >-
+      Rule S3. axispay-edge is deliberately NOT listed — that omission is the
+      control that keeps the DMZ outside the cardholder data environment.
+spec:
+  podSelector: {}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector: { matchLabels: { axispay.io/zone: core } }
+        - namespaceSelector: { matchLabels: { axispay.io/zone: async } }
+      ports:
+        - { protocol: TCP, port: 5432 }
+        - { protocol: TCP, port: 6379 }
+        - { protocol: TCP, port: 5672 }

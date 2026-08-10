@@ -1,0 +1,78 @@
+# ==============================================================================
+# STEP 2 — allow DNS. THE most commonly forgotten rule.
+# ==============================================================================
+# After default-deny, every service call fails — including ones you have
+# explicitly allowed. The reason catches almost everyone:
+#
+#     A call to payment-service.axispay-core.svc.cluster.local begins with a
+#     DNS lookup to CoreDNS in kube-system. That lookup is EGRESS TRAFFIC,
+#     and your default-deny policy blocked it.
+#
+# The symptom is a name-resolution failure, not a connection refusal — so it
+# looks like a DNS outage rather than a policy problem. Students who learned
+# DNS properly in L4.2 can derive this; students who did not will spend twenty
+# minutes on it.
+#
+# UDP *and* TCP on 53: DNS uses UDP normally and falls back to TCP for large
+# responses. Allowing only UDP produces intermittent failures that are far
+# harder to diagnose than a total one.
+# ==============================================================================
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns-egress
+  namespace: axispay-core
+  labels: { app.kubernetes.io/part-of: axispay, axispay.io/day-introduced: "4" }
+spec:
+  podSelector: {}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - { protocol: UDP, port: 53 }
+        - { protocol: TCP, port: 53 }
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns-egress
+  namespace: axispay-data
+  labels: { app.kubernetes.io/part-of: axispay, axispay.io/day-introduced: "4" }
+spec:
+  podSelector: {}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: kube-system }
+          podSelector:
+            matchLabels: { k8s-app: kube-dns }
+      ports:
+        - { protocol: UDP, port: 53 }
+        - { protocol: TCP, port: 53 }
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns-egress
+  namespace: axispay-async
+  labels: { app.kubernetes.io/part-of: axispay, axispay.io/day-introduced: "4" }
+spec:
+  podSelector: {}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: kube-system }
+          podSelector:
+            matchLabels: { k8s-app: kube-dns }
+      ports:
+        - { protocol: UDP, port: 53 }
+        - { protocol: TCP, port: 53 }

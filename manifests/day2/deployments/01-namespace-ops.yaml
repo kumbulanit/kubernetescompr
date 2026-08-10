@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: axispay-ops
+  labels:
+    app.kubernetes.io/part-of: axispay
+    axispay.io/zone: ops
+    axispay.io/pci-scope: "false"
+    axispay.io/day-introduced: "2"
+    kubernetes.io/metadata.name: axispay-ops
+  annotations:
+    axispay.io/description: >-
+      Operational tooling: load generation and per-node agents. Holds no
+      cardholder data and is deliberately outside the CDE.

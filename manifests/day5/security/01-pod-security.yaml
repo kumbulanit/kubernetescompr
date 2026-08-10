@@ -1,0 +1,141 @@
+# ==============================================================================
+# Pod Security Admission — enforcement at the namespace boundary
+# ==============================================================================
+# On Day 3 you set securityContext on every workload. Nothing stopped a NEW
+# workload from omitting it. PSA closes that: it is a built-in admission
+# controller that REJECTS non-compliant pods at creation.
+#
+# THREE PROFILES:
+#   privileged   no restrictions
+#   baseline     blocks known privilege escalations (hostNetwork, privileged,
+#                hostPath, most capabilities)
+#   restricted   baseline PLUS: must run non-root, must drop ALL capabilities,
+#                must set seccompProfile, no allowPrivilegeEscalation
+#
+# THREE MODES, and using all three is the professional pattern:
+#   enforce  REJECT the pod
+#   audit    allow, but record a violation in the audit log
+#   warn     allow, but return a warning to the person running kubectl
+#
+# The rollout pattern: warn+audit first, look at what breaks, then enforce.
+# Going straight to enforce on a live namespace stops deployments you did not
+# know were non-compliant.
+# ==============================================================================
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: axispay-core
+  labels:
+    app.kubernetes.io/part-of: axispay
+    axispay.io/zone: core
+    axispay.io/pci-scope: "true"
+    axispay.io/day-introduced: "1"
+    kubernetes.io/metadata.name: axispay-core
+    # The cardholder data environment gets the strictest profile, enforced.
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: latest
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: axispay-edge
+  labels:
+    app.kubernetes.io/part-of: axispay
+    axispay.io/zone: edge
+    axispay.io/pci-scope: "false"
+    axispay.io/day-introduced: "1"
+    kubernetes.io/metadata.name: axispay-edge
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: latest
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: axispay-async
+  labels:
+    app.kubernetes.io/part-of: axispay
+    axispay.io/zone: async
+    axispay.io/pci-scope: "true"
+    axispay.io/day-introduced: "1"
+    kubernetes.io/metadata.name: axispay-async
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: latest
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: axispay-data
+  labels:
+    app.kubernetes.io/part-of: axispay
+    axispay.io/zone: data
+    axispay.io/pci-scope: "true"
+    axispay.io/day-introduced: "3"
+    kubernetes.io/metadata.name: axispay-data
+    # BASELINE, not restricted — and this is a deliberate, documented exception.
+    # The official postgres, redis and rabbitmq images do not satisfy every
+    # `restricted` requirement out of the box (seccompProfile and
+    # readOnlyRootFilesystem in particular). Rather than pretend otherwise, we
+    # enforce baseline and AUDIT against restricted, so the gap is recorded and
+    # visible rather than silently waived.
+    pod-security.kubernetes.io/enforce: baseline
+    pod-security.kubernetes.io/enforce-version: latest
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: axispay-ops
+  labels:
+    app.kubernetes.io/part-of: axispay
+    axispay.io/zone: ops
+    axispay.io/pci-scope: "false"
+    axispay.io/day-introduced: "2"
+    kubernetes.io/metadata.name: axispay-ops
+    # node-agent reads /proc from the host, which restricted forbids.
+    pod-security.kubernetes.io/enforce: baseline
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: axispay-observability
+  labels:
+    app.kubernetes.io/part-of: axispay
+    axispay.io/zone: observability
+    axispay.io/pci-scope: "false"
+    axispay.io/day-introduced: "5"
+    kubernetes.io/metadata.name: axispay-observability
+    # PRIVILEGED, and this is the one exception in the platform worth arguing
+    # about in class.
+    #
+    # Grafana Alloy reads container logs from /var/log/pods on the node. That
+    # needs a hostPath volume, and **Baseline forbids hostPath** — not just
+    # Restricted. So "baseline" here would not be a stricter-but-workable
+    # setting; it would silently stop the log pipeline from ever starting,
+    # with a rejection message about volumes that looks nothing like a logging
+    # problem.
+    #
+    # The honest options were:
+    #   1. privileged on this namespace, with the reason written down  <- chosen
+    #   2. read logs through the API instead of the filesystem — much heavier
+    #      on the API server, and it stops working exactly when the API server
+    #      is the thing that is unwell
+    #   3. no log aggregation at all
+    #
+    # What makes option 1 defensible is the surrounding context, not the label:
+    # nothing here holds cardholder data, nothing here is internet-reachable
+    # except Grafana behind TLS, and `audit`/`warn` stay at restricted so every
+    # workload that does NOT need the exception still generates a warning when
+    # it drifts. The exception is scoped to one namespace and one reason.
+    pod-security.kubernetes.io/enforce: privileged
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted

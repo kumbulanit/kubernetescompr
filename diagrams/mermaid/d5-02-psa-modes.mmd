@@ -1,0 +1,14 @@
+%% D5 M5.1 — why three modes exist, and the migration they enable
+graph LR
+    P["pod create<br/>or update"] --> E{"enforce"}
+    E -->|violates| REJ["<b>REJECTED</b><br/>the object is never created.<br/>No CrashLoopBackOff, no cleanup,<br/>no window in which it ran."]
+    E -->|complies| OK["persisted"]
+    P --> A["audit<br/><i>-> API server audit log</i>"]
+    P --> W["warn<br/><i>-> the person running kubectl</i>"]
+    MIG["<b>THE MIGRATION PATH</b><br/>enforce = what you meet today<br/>warn + audit = where you intend to be<br/><i>the warnings size the work</i>"]
+    W --> MIG
+    A --> MIG
+    NOTE["PSA evaluates on CREATE and UPDATE.<br/>Existing pods keep running — the failure<br/>arrives at the next rollout, weeks later."]
+    style REJ fill:#3b1f1f,stroke:#d32f2f,color:#fff
+    style MIG fill:#1f3b2b,stroke:#66bb6a,color:#fff
+    style NOTE fill:#3b2f1f,stroke:#ffa726,color:#fff

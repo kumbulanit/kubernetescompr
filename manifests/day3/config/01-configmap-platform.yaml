@@ -1,0 +1,82 @@
+# ==============================================================================
+# Platform configuration — the SAME values every service needs
+# ==============================================================================
+# Until now these were hard-coded in each Deployment. Changing the log level
+# meant editing eleven manifests. Now it is one object.
+#
+# TWO WAYS TO CONSUME A CONFIGMAP, and the difference matters:
+#
+#   envFrom / env  -> a SNAPSHOT taken when the container starts.
+#                     Changing the ConfigMap does NOT change a running pod.
+#                     You must trigger a rollout.
+#
+#   volumeMounts   -> a projected file that Kubernetes UPDATES IN PLACE,
+#                     typically within ~60s (kubelet sync period). The app must
+#                     re-read the file to notice.
+#
+# AxisPay uses env for values a service reads once at startup, and a volume for
+# the fraud thresholds, which operations must be able to change without a
+# redeploy of the payment path. That is a deliberate split, not an accident.
+# ==============================================================================
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: axispay-platform-config
+  namespace: axispay-core
+  labels:
+    app.kubernetes.io/name: axispay-platform-config
+    app.kubernetes.io/part-of: axispay
+    axispay.io/day-introduced: "3"
+data:
+  ENVIRONMENT: "training"
+  LOG_LEVEL: "info"
+  DEFAULT_CURRENCY: "ZAR"
+  SUPPORTED_CURRENCIES: "ZAR,USD,EUR,GBP,NGN,KES,BWP"
+  DOWNSTREAM_TIMEOUT_SECONDS: "5.0"
+  # Cluster DNS names, in one place. On Day 4 these do not change even though
+  # the network in front of them changes completely.
+  AUTH_SERVICE_URL:     "http://auth-service.axispay-edge.svc.cluster.local:8080"
+  MERCHANT_SERVICE_URL: "http://merchant-service.axispay-core.svc.cluster.local:8080"
+  PAYMENT_SERVICE_URL:  "http://payment-service.axispay-core.svc.cluster.local:8080"
+  CUSTOMER_SERVICE_URL: "http://customer-service.axispay-core.svc.cluster.local:8080"
+  FRAUD_SERVICE_URL:    "http://fraud-service.axispay-core.svc.cluster.local:8080"
+  ROUTING_SERVICE_URL:  "http://routing-service.axispay-core.svc.cluster.local:8080"
+  LEDGER_SERVICE_URL:   "http://ledger-service.axispay-core.svc.cluster.local:8080"
+  # Data tier — hostnames only. Credentials live in a Secret, never here.
+  POSTGRES_HOST: "postgres-0.postgres.axispay-data.svc.cluster.local"
+  POSTGRES_PORT: "5432"
+  POSTGRES_DB:   "axispay"
+  REDIS_HOST:    "redis-0.redis.axispay-data.svc.cluster.local"
+  REDIS_PORT:    "6379"
+  RABBITMQ_HOST: "rabbitmq-0.rabbitmq.axispay-data.svc.cluster.local"
+  RABBITMQ_PORT: "5672"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: axispay-fraud-rules
+  namespace: axispay-core
+  labels:
+    app.kubernetes.io/name: axispay-fraud-rules
+    app.kubernetes.io/part-of: axispay
+    axispay.io/day-introduced: "3"
+  annotations:
+    axispay.io/consumed-as: "volume — so risk thresholds can change WITHOUT a rollout"
+data:
+  fraud-rules.yaml: |
+    # Risk thresholds. Mounted as a file so the fraud team can tune them
+    # without a redeploy of the payment path. The service re-reads on change.
+    velocity:
+      window_seconds: 300
+      thresholds:
+        - { attempts: 3,  score: 8 }
+        - { attempts: 5,  score: 22 }
+        - { attempts: 9,  score: 45 }
+    decision:
+      review_at: 45
+      decline_at: 75
+    amount_deviation:
+      above_typical_x3: 10
+      above_typical_x6: 25
+    geography:
+      cross_border_penalty: 12

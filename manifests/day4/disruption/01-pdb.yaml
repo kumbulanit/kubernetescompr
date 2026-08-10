@@ -1,0 +1,109 @@
+# ==============================================================================
+# PodDisruptionBudgets — what makes Friday's upgrade survivable
+# ==============================================================================
+# A PDB constrains VOLUNTARY disruption only: `kubectl drain`, a cluster
+# upgrade, a node pool rotation. It does NOT protect against a node crashing,
+# an OOM kill or a failing liveness probe — nothing can.
+#
+# minAvailable vs maxUnavailable:
+#   minAvailable: 2     at least 2 must remain Ready
+#   maxUnavailable: 1   at most 1 may be taken at a time
+#
+# Prefer maxUnavailable with an HPA: minAvailable is an absolute number that
+# does not scale, so at minReplicas it can BLOCK ALL DRAINS. That is a real
+# operational trap — a node that cannot be drained is a node that cannot be
+# patched.
+#
+# Without these, `kubectl drain` evicts every replica on that node at once.
+# On Friday you drain a node during a live upgrade; these are what make that
+# a non-event.
+# ==============================================================================
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: payment-service
+  namespace: axispay-core
+  labels: { app.kubernetes.io/part-of: axispay, axispay.io/day-introduced: "4" }
+  annotations:
+    axispay.io/description: "The payment path. At most one replica may be voluntarily removed."
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: payment-service
+      app.kubernetes.io/instance: axispay
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: edge-gateway
+  namespace: axispay-edge
+  labels: { app.kubernetes.io/part-of: axispay, axispay.io/day-introduced: "4" }
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: edge-gateway
+      app.kubernetes.io/instance: axispay
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: auth-service
+  namespace: axispay-edge
+  labels: { app.kubernetes.io/part-of: axispay, axispay.io/day-introduced: "4" }
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: auth-service
+      app.kubernetes.io/instance: axispay
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: merchant-service
+  namespace: axispay-core
+  labels: { app.kubernetes.io/part-of: axispay, axispay.io/day-introduced: "4" }
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: merchant-service
+      app.kubernetes.io/instance: axispay
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: fraud-service
+  namespace: axispay-core
+  labels: { app.kubernetes.io/part-of: axispay, axispay.io/day-introduced: "4" }
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: fraud-service
+      app.kubernetes.io/instance: axispay
+---
+# The data tier is a SINGLE replica. A PDB of maxUnavailable: 0 would make the
+# node undrainable forever, which is worse than the outage it prevents.
+# minAvailable: 0 documents the intent explicitly: this workload has NO
+# disruption budget, and draining its node WILL take the database down.
+# That is a conscious decision, recorded where an operator will find it.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: postgres
+  namespace: axispay-data
+  labels: { app.kubernetes.io/part-of: axispay, axispay.io/day-introduced: "4" }
+  annotations:
+    axispay.io/warning: >-
+      Single replica. Draining this node WILL cause a database outage. Real HA
+      needs an Operator with streaming replication — see L3.6 challenge C1.
+spec:
+  minAvailable: 0
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: postgres
+      app.kubernetes.io/instance: axispay

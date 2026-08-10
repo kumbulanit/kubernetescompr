@@ -1,0 +1,24 @@
+%% D1 M1.7 — Deployment -> ReplicaSet -> Pod
+%% Use: the slide that buys the whole of Day 2
+graph TB
+    D["<b>Deployment</b> payment-service<br/><i>manages ReplicaSets,<br/>never Pods directly</i>"]
+    RS1["<b>ReplicaSet</b> -7d4f9c8b6<br/>replicas: 3  ← current"]
+    RS0["<b>ReplicaSet</b> -6c9d4b7f5<br/>replicas: 0  ← previous<br/><i>kept for rollback</i>"]
+    P1["Pod -x7k2p"]
+    P2["Pod -m9v4t"]
+    P3["Pod -p2n8w"]
+    DEAD["Pod deleted ✗"]
+    NEW["Pod -k4j8w<br/><i>replacement in ~8s</i>"]
+
+    D -->|owns| RS1
+    D -->|owns| RS0
+    RS1 -->|owns| P1
+    RS1 -->|owns| P2
+    RS1 -->|owns| P3
+    P2 -.-> DEAD
+    RS1 -->|"observes 2 ≠ 3"| NEW
+    style D fill:#1f2b3b,stroke:#42a5f5,color:#fff
+    style RS1 fill:#1f3b2b,stroke:#66bb6a,color:#fff
+    style RS0 fill:#2b2b2b,stroke:#888,color:#aaa
+    style NEW fill:#1f3b2b,stroke:#66bb6a,color:#fff
+    style DEAD fill:#2b1f1f,stroke:#d32f2f,color:#888

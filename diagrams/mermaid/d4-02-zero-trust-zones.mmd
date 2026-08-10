@@ -1,0 +1,16 @@
+%% D4 M4.5 — before and after
+graph TB
+    subgraph BEFORE["BEFORE — flat pod network"]
+        E1[edge-gateway] -->|"works :5432"| D1[(PostgreSQL)]
+        E1 --> F1[fraud-service]
+    end
+    subgraph AFTER["AFTER — zero trust"]
+        E2[edge-gateway] -.->|"BLOCKED"| D2[(PostgreSQL)]
+        E2 -.->|"BLOCKED"| F2[fraud-service]
+        E2 -->|"allowed :8080"| P2[payment-service]
+        P2 -->|"allowed"| F2
+        P2 -->|"allowed :5432"| D2
+    end
+    BEFORE --> AFTER
+    style D1 fill:#3b1f1f,stroke:#d32f2f,color:#fff
+    style D2 fill:#1f3b2b,stroke:#66bb6a,color:#fff

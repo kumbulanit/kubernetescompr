@@ -1,0 +1,87 @@
+# ==============================================================================
+# Placement — affinity, anti-affinity and topology spread
+# ==============================================================================
+# Three replicas mean nothing if they are all on one node. Until now the
+# scheduler has spread them by luck, not by instruction.
+#
+# THE DISTINCTION THAT MATTERS:
+#   nodeAffinity      the POD is attracted to certain NODES
+#   podAntiAffinity   the POD repels OTHER PODS like itself
+#   taints            the NODE repels PODS  (opposite direction — see 02)
+#
+# required vs preferred:
+#   requiredDuringScheduling...   a HARD constraint. Cannot be satisfied ->
+#                                 the pod stays Pending, forever.
+#   preferredDuringScheduling...  a SCORING hint. Best effort.
+#
+# On a 3-node cluster, `required` anti-affinity with 4 replicas leaves the
+# fourth pod permanently Pending. That is why payment-service uses required up
+# to its node count and topology spread beyond it.
+# ==============================================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: payment-service
+  namespace: axispay-core
+spec:
+  template:
+    spec:
+      affinity:
+        # ---- HARD: no two payment-service pods on the same node ----------
+        # The payment path is the one thing that must survive a node loss.
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - topologyKey: kubernetes.io/hostname
+              labelSelector:
+                matchLabels:
+                  app.kubernetes.io/name: payment-service
+        # ---- SOFT: prefer to sit near fraud-service ----------------------
+        # Co-location saves a network hop on the hottest call in the flow.
+        # PREFERRED, because correctness must never depend on it.
+        podAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 50
+              podAffinityTerm:
+                topologyKey: kubernetes.io/hostname
+                labelSelector:
+                  matchLabels:
+                    app.kubernetes.io/name: fraud-service
+      # ---- Spread evenly, and REFUSE to schedule if that is impossible ---
+      # maxSkew 1 = the busiest node may hold at most one more replica than
+      # the emptiest. DoNotSchedule makes it a hard rule.
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: payment-service
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fraud-service
+  namespace: axispay-core
+spec:
+  template:
+    spec:
+      affinity:
+        podAntiAffinity:
+          # PREFERRED here, not required: fraud-service scales to 6 via the HPA
+          # and a 3-node cluster cannot satisfy `required` beyond 3. A hard rule
+          # would silently cap autoscaling at the node count — and the symptom
+          # (pods Pending during a spike) looks nothing like the cause.
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                topologyKey: kubernetes.io/hostname
+                labelSelector:
+                  matchLabels:
+                    app.kubernetes.io/name: fraud-service
+      topologySpreadConstraints:
+        - maxSkew: 2
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway   # degrade rather than refuse
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: fraud-service

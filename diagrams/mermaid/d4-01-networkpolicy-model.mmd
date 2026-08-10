@@ -1,0 +1,9 @@
+%% D4 M4.5 — the three properties that decide everything
+graph TB
+    A["<b>1. DEFAULT-ALLOW</b><br/>a pod is unrestricted until<br/>SOME policy selects it"]
+    B["<b>2. ADDITIVE</b><br/>policies only ADD permission.<br/>There is no deny rule — you deny by<br/>selecting a pod and permitting nothing."]
+    C["<b>3. BOTH DIRECTIONS</b><br/>egress at the SOURCE and ingress at the<br/>DESTINATION must BOTH allow the flow"]
+    D["default-deny =<br/>podSelector: {}<br/>policyTypes: [Ingress, Egress]<br/><i>and no rules at all</i>"]
+    A --> B --> C
+    B --> D
+    style D fill:#3b1f2b,stroke:#c2185b,color:#fff

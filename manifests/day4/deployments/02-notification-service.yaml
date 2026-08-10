@@ -1,0 +1,123 @@
+# ==============================================================================
+# notification-service — Deployment + Service (Day 4)
+# Merchant webhooks with backoff retry and a dead-letter queue
+# ==============================================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: notification-service
+  namespace: axispay-async
+  labels: &labels
+    app.kubernetes.io/name: notification-service
+    app.kubernetes.io/instance: axispay
+    app.kubernetes.io/version: "1.0.0"
+    app.kubernetes.io/component: async
+    app.kubernetes.io/part-of: axispay
+    app.kubernetes.io/managed-by: kubectl
+    axispay.io/zone: async
+    axispay.io/day-introduced: "4"
+spec:
+  replicas: 2
+  revisionHistoryLimit: 5
+  strategy:
+    type: RollingUpdate
+    rollingUpdate: { maxUnavailable: 0, maxSurge: 1 }
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: notification-service
+      app.kubernetes.io/instance: axispay
+  template:
+    metadata:
+      labels: *labels
+    spec:
+      terminationGracePeriodSeconds: 45
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile: { type: RuntimeDefault }
+      # Spread replicas across nodes. One node failure must not take the whole
+      # service — see L4.5. Preferred, not required: with 2 replicas on a
+      # 2-node cluster, "required" would make the second pod unschedulable.
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                topologyKey: kubernetes.io/hostname
+                labelSelector:
+                  matchLabels:
+                    app.kubernetes.io/name: notification-service
+      containers:
+        - name: notification-service
+          image: axispay/notification-service:1.0.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ["ALL"] }
+          resources:
+            requests: { cpu: "50m", memory: "72Mi" }
+            limits:   { cpu: "250m", memory: "192Mi" }
+          startupProbe:
+            httpGet: { path: /startupz, port: http }
+            periodSeconds: 2
+            failureThreshold: 30
+          livenessProbe:
+            httpGet: { path: /healthz, port: http }
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          readinessProbe:
+            httpGet: { path: /readyz, port: http }
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 2
+          lifecycle:
+            preStop: { exec: { command: ["sh","-c","sleep 8"] } }
+          envFrom:
+            - configMapRef:
+                name: axispay-async-config
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef: { name: axispay-db-credentials, key: DATABASE_URL }
+            - name: POD_NAME
+              valueFrom: { fieldRef: { fieldPath: metadata.name } }
+            - name: POD_IP
+              valueFrom: { fieldRef: { fieldPath: status.podIP } }
+            - name: NODE_NAME
+              valueFrom: { fieldRef: { fieldPath: spec.nodeName } }
+            - name: NAMESPACE
+              valueFrom: { fieldRef: { fieldPath: metadata.namespace } }
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: { medium: Memory, sizeLimit: 32Mi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: notification-service
+  namespace: axispay-async
+  labels:
+    app.kubernetes.io/name: notification-service
+    app.kubernetes.io/instance: axispay
+    app.kubernetes.io/component: async
+    app.kubernetes.io/part-of: axispay
+    axispay.io/day-introduced: "4"
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: notification-service
+    app.kubernetes.io/instance: axispay
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http

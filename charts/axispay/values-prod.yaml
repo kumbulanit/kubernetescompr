@@ -1,0 +1,88 @@
+# ==============================================================================
+# PRODUCTION — real merchants, real money, real regulator
+# ==============================================================================
+# Nothing here is relaxed. Where a value differs from the default it is
+# TIGHTER, not looser. Read this file as the answer to "what does the platform
+# team consider non-negotiable".
+# ==============================================================================
+global:
+  environment: production
+  logLevel: info               # debug logs would emit request bodies
+  image:
+    tag: "1.0.0"               # pinned; never "latest" — you cannot roll back to a moving tag
+    pullPolicy: IfNotPresent
+
+services:
+  edge-gateway:      { replicas: 4, antiAffinity: required, pdb: { maxUnavailable: 1 } }
+  auth-service:      { replicas: 3, antiAffinity: required, pdb: { maxUnavailable: 1 } }
+  payment-service:
+    replicas: 6
+    antiAffinity: required
+    pdb: { maxUnavailable: 1 }
+    hpa: { enabled: true, minReplicas: 6, maxReplicas: 20, targetCPU: 60 }
+    resources:
+      requests: { cpu: 200m, memory: 192Mi }
+      limits:   { cpu: 1000m, memory: 512Mi }
+  merchant-service:  { replicas: 3, antiAffinity: preferred, pdb: { maxUnavailable: 1 } }
+  fraud-service:
+    replicas: 4
+    antiAffinity: preferred
+    pdb: { maxUnavailable: 1 }
+    hpa: { enabled: true, minReplicas: 4, maxReplicas: 16, targetCPU: 60 }
+  routing-service:   { replicas: 3, antiAffinity: preferred, pdb: { maxUnavailable: 1 } }
+  ledger-service:    { replicas: 3, antiAffinity: required, pdb: { maxUnavailable: 1 } }
+  customer-service:  { replicas: 3, pdb: { maxUnavailable: 1 } }
+  settlement-service: { replicas: 2, pdb: { maxUnavailable: 1 } }
+  notification-service: { replicas: 3, pdb: { maxUnavailable: 1 } }
+  audit-service:     { replicas: 3, antiAffinity: required, pdb: { maxUnavailable: 1 } }
+  reporting-service: { replicas: 4, pdb: { maxUnavailable: 1 } }
+
+podDisruptionBudget:
+  enabled: true
+networkPolicy:
+  enabled: true
+podSecurity:
+  enforce: restricted
+serviceAccount:
+  automountToken: false
+
+# A production rollout never reduces capacity. maxSurge 2 costs two pods'
+# worth of headroom and buys a release that finishes in half the time.
+strategy:
+  maxUnavailable: 0
+  maxSurge: 2
+terminationGracePeriodSeconds: 60
+preStopSleepSeconds: 15        # a large cluster propagates endpoint removal slowly
+
+ingress:
+  enabled: true
+  sslRedirect: true
+  api:
+    host: api.axispay.example
+    tlsSecret: axispay-tls-prod
+    rateLimitRps: 200
+  portal:
+    host: portal.axispay.example
+    tlsSecret: axispay-portal-tls-prod
+    rateLimitRps: 20
+
+observability:
+  enabled: true
+  serviceMonitor:
+    interval: 15s              # tighter scrape — alerts fire sooner
+  alerts:
+    enabled: true
+    availabilitySLO: 99.95
+    latencyP99Ms: 250
+
+loadgen:
+  enabled: false               # never generate synthetic load against real merchants
+
+cronjobs:
+  settlement-cron:
+    enabled: true
+    schedule: "0 23 * * *"
+    concurrencyPolicy: Forbid  # two reconcilers double-count the ledger
+
+data:
+  enabled: false               # production databases are managed outside this chart

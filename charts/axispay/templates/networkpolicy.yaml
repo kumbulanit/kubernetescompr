@@ -1,0 +1,170 @@
+{{/*
+Default-deny per namespace, then the specific allows.
+
+Two facts drive the shape of this file:
+  1. A pod is default-ALLOW until a policy selects it. The empty podSelector
+     below is what actually turns the namespace off.
+  2. Policies are ADDITIVE. There is no deny rule. You cannot carve an
+     exception out of an allow — you narrow the allow itself.
+
+Egress to DNS must be granted explicitly. The most common NetworkPolicy
+incident is a default-deny that also blocks port 53, after which every
+hostname in the namespace stops resolving and the symptom looks like a
+service outage rather than a policy change.
+*/}}
+{{- if .Values.networkPolicy.enabled }}
+{{- range $zone, $ns := .Values.namespaces }}
+{{- if eq $zone "observability" }}
+{{- /*
+  THE DOCUMENTED EXCEPTION.
+
+  Prometheus scrapes every namespace, Grafana queries Prometheus and Loki,
+  Alertmanager is queried by Prometheus and posts to its receivers, and the
+  operator reconciles all three. A precise policy would mean enumerating the
+  internals of three upstream projects and re-deriving it on every chart
+  upgrade — and a policy nobody maintains fails open anyway.
+
+  So this namespace gets a broad intra-namespace allow instead of a
+  default-deny, and the justification is written down:
+    - it holds no merchant and no cardholder data
+    - it is not internet-reachable except Grafana, behind TLS
+    - the blast radius of a compromise here is read access to metrics
+
+  That is a trade-off made on purpose. It is not the same thing as forgetting
+  to write a policy, and scripts/validate/check-helm-chart.py asserts the
+  exception stays explicit rather than quietly spreading to other namespaces.
+*/}}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-observability-internal
+  namespace: {{ $ns }}
+  labels:
+    {{- include "axispay.labels" $ | nindent 4 }}
+spec:
+  podSelector: {}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ $ns }}
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
+      ports:
+        - protocol: TCP
+          port: 3000
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-observability-egress
+  namespace: {{ $ns }}
+  labels:
+    {{- include "axispay.labels" $ | nindent 4 }}
+spec:
+  podSelector: {}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    {{- /* Only the namespaces that actually expose /metrics on 8080. The data
+           tier is excluded: Postgres and Redis need a sidecar exporter to
+           speak Prometheus, and this platform does not deploy one. Container
+           CPU and memory for the data tier still arrive via cAdvisor on the
+           kubelet, which no NetworkPolicy governs. */}}
+    - to:
+        - namespaceSelector:
+            matchExpressions:
+              - key: kubernetes.io/metadata.name
+                operator: In
+                values:
+                  {{- range $z, $n := $.Values.namespaces }}
+                  {{- if ne $z "data" }}
+                  - {{ $n }}
+                  {{- end }}
+                  {{- end }}
+      ports:
+        - protocol: TCP
+          port: 8080
+    - to:
+        - ipBlock:
+            cidr: {{ $.Values.networkPolicy.nodeCIDR }}
+      ports:
+        - protocol: TCP
+          port: 10250
+        - protocol: TCP
+          port: 8443
+        - protocol: TCP
+          port: 443
+{{- else }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  namespace: {{ $ns }}
+  labels:
+    {{- include "axispay.labels" $ | nindent 4 }}
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns-egress
+  namespace: {{ $ns }}
+  labels:
+    {{- include "axispay.labels" $ | nindent 4 }}
+spec:
+  podSelector: {}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-prometheus-scrape
+  namespace: {{ $ns }}
+  labels:
+    {{- include "axispay.labels" $ | nindent 4 }}
+spec:
+  podSelector: {}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ $.Values.namespaces.observability }}
+      ports:
+        - protocol: TCP
+          port: 8080
+{{- end }}
+{{- end }}
+{{- end }}

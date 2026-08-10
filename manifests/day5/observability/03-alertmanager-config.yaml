@@ -1,0 +1,152 @@
+# ==============================================================================
+# AlertmanagerConfig — routing, grouping, silencing and inhibition
+# ==============================================================================
+# Prometheus decides WHETHER something is wrong. Alertmanager decides WHO hears
+# about it and HOW OFTEN. Confusing the two is why teams end up with alert
+# rules containing team names and business hours.
+#
+# The four mechanisms, and why each exists:
+#
+#   GROUPING     One bad node takes out eight pods. Without grouping that is
+#                eight pages. group_by + group_wait collapses them into one
+#                notification with eight entries.
+#
+#   THROTTLING   repeat_interval stops a four-hour incident from producing a
+#                page every thirty seconds. Four hours for warnings, one hour
+#                for criticals — a critical that is still firing after an hour
+#                genuinely should be re-raised.
+#
+#   INHIBITION   When payment-service has zero ready endpoints, its error rate
+#                is also high and its latency is also bad. Three pages for one
+#                fault. inhibit_rules below suppress the derived symptoms while
+#                the root symptom is firing.
+#
+#   ROUTING      Risk alerts go to the risk team. Reconciliation goes to
+#                finance-ops. Sending everything to one channel is the same as
+#                sending it nowhere.
+#
+# The receivers below point at fictional endpoints. Replace the webhook URLs
+# with real ones (Slack, PagerDuty, Opsgenie, Teams) for a real deployment —
+# the routing tree does not change.
+#
+#   kubectl get alertmanagerconfig -n axispay-observability
+#   kubectl -n axispay-observability port-forward svc/kube-prometheus-stack-alertmanager 9093
+# ==============================================================================
+apiVersion: monitoring.coreos.com/v1alpha1
+kind: AlertmanagerConfig
+metadata:
+  name: axispay-routing
+  namespace: axispay-observability
+  labels:
+    app.kubernetes.io/part-of: axispay
+    axispay.io/day-introduced: "5"
+    release: kube-prometheus-stack     # alertmanagerConfigSelector, same rule again
+spec:
+  route:
+    receiver: platform-default
+    # Group by the fields that make two alerts "the same incident". alertname
+    # and namespace, NOT pod — grouping by pod would defeat the purpose, since
+    # eight failing pods have eight different names.
+    groupBy: [alertname, namespace, severity]
+    groupWait: 30s          # hold the first notification briefly to collect siblings
+    groupInterval: 5m       # then batch further updates for this group
+    repeatInterval: 4h
+    routes:
+      # ---- critical payment-path alerts ------------------------------------
+      - receiver: payments-oncall
+        matchers:
+          - name: severity
+            value: critical
+          - name: team
+            value: payments
+        groupWait: 10s      # money is moving; do not wait 30 seconds
+        repeatInterval: 1h
+        continue: false
+
+      # ---- reconciliation and settlement -----------------------------------
+      # Finance-ops, not the platform team. The platform cannot fix an
+      # unreconciled ledger and finance-ops cannot fix a CrashLoopBackOff.
+      - receiver: finance-ops
+        matchers:
+          - name: team
+            value: finance-ops
+        repeatInterval: 12h
+
+      # ---- risk and fraud ---------------------------------------------------
+      - receiver: risk-team
+        matchers:
+          - name: team
+            value: risk
+        repeatInterval: 12h
+
+      # ---- everything else that is critical --------------------------------
+      - receiver: platform-oncall
+        matchers:
+          - name: severity
+            value: critical
+        repeatInterval: 1h
+
+  # ---- inhibition ---------------------------------------------------------
+  # Read these as: "while the LEFT alert is firing, do not send the RIGHT one
+  # for the same namespace".
+  inhibitRules:
+    # Zero endpoints is the root symptom. Error rate and latency are downstream
+    # of it and add nothing. One page, not three.
+    - sourceMatch:
+        - name: alertname
+          value: AxisPayServiceNoReadyEndpoints
+      targetMatch:
+        - name: alertname
+          value: AxisPayPaymentErrorRateHigh
+      equal: [namespace]
+    - sourceMatch:
+        - name: alertname
+          value: AxisPayServiceNoReadyEndpoints
+      targetMatch:
+        - name: alertname
+          value: AxisPayPaymentLatencyHigh
+      equal: [namespace]
+    # A crash loop explains the OOMKill that caused it.
+    - sourceMatch:
+        - name: alertname
+          value: AxisPayPodCrashLooping
+      targetMatch:
+        - name: alertname
+          value: AxisPayContainerOOMKilled
+      equal: [namespace, pod]
+    # Anything critical suppresses the warnings for the same incident.
+    - sourceMatch:
+        - name: severity
+          value: critical
+      targetMatch:
+        - name: severity
+          value: warning
+      equal: [alertname, namespace]
+
+  # ---- receivers ----------------------------------------------------------
+  # Fictional endpoints. The shape is what matters, not the URL.
+  receivers:
+    - name: platform-default
+      webhookConfigs:
+        - url: http://alert-sink.axispay-observability.svc.cluster.local:8080/alerts/platform
+          sendResolved: true
+
+    - name: platform-oncall
+      webhookConfigs:
+        - url: http://alert-sink.axispay-observability.svc.cluster.local:8080/alerts/platform-oncall
+          sendResolved: true
+
+    - name: payments-oncall
+      webhookConfigs:
+        - url: http://alert-sink.axispay-observability.svc.cluster.local:8080/alerts/payments
+          sendResolved: true
+
+    - name: finance-ops
+      webhookConfigs:
+        - url: http://alert-sink.axispay-observability.svc.cluster.local:8080/alerts/finance
+          sendResolved: true
+
+    - name: risk-team
+      webhookConfigs:
+        - url: http://alert-sink.axispay-observability.svc.cluster.local:8080/alerts/risk
+          sendResolved: true

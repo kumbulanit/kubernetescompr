@@ -1,0 +1,36 @@
+{{/*
+ServiceMonitor is a CRD owned by the Prometheus Operator. If the operator is
+not installed the object applies cleanly and does nothing at all — which is a
+confusing failure mode, so the guard below turns the whole block off rather
+than leaving orphaned CRs behind.
+
+It selects the SERVICE, not the pods. Prometheus then discovers the endpoints
+behind it, which means an unready pod is never scraped — exactly the behaviour
+you want, since a pod that is still starting will report nonsense.
+*/}}
+{{- if and .Values.observability.enabled .Values.observability.serviceMonitor.enabled }}
+{{- range $zone, $ns := .Values.namespaces }}
+{{- if has $zone (list "edge" "core" "async" "ops" "observability") }}
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: axispay-{{ $zone }}
+  namespace: {{ $ns }}
+  labels:
+    {{- include "axispay.labels" $ | nindent 4 }}
+    release: kube-prometheus-stack   # the operator's own selector
+spec:
+  namespaceSelector:
+    matchNames: [{{ $ns }}]
+  selector:
+    matchLabels:
+      app.kubernetes.io/part-of: axispay
+  endpoints:
+    - port: http
+      path: {{ $.Values.observability.serviceMonitor.path }}
+      interval: {{ $.Values.observability.serviceMonitor.interval }}
+      scrapeTimeout: 10s
+{{- end }}
+{{- end }}
+{{- end }}

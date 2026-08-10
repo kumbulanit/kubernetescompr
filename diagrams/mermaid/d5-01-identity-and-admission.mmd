@@ -1,0 +1,19 @@
+%% D5 M5.1 — two orthogonal controls, routinely confused
+graph TB
+    subgraph AUTH["AUTHENTICATION — who is this pod?"]
+        SA["ServiceAccount<br/><i>an identity</i>"]
+        TOK["projected token<br/>/var/run/secrets/...<br/><b>a live credential</b>"]
+        SA --> TOK
+    end
+    subgraph ADM["ADMISSION — may this pod exist in this shape?"]
+        PSA["Pod Security Admission<br/><i>compiled into the API server</i>"]
+        LVL["privileged / baseline / restricted<br/>× enforce / audit / warn"]
+        PSA --> LVL
+    end
+    POD["a pod"] --> AUTH
+    POD --> ADM
+    NOTE["A pod can have a perfect ServiceAccount<br/>and still run as root with a hostPath.<br/><b>You need both controls.</b>"]
+    AUTH --> NOTE
+    ADM --> NOTE
+    style TOK fill:#3b1f1f,stroke:#d32f2f,color:#fff
+    style NOTE fill:#3b2f1f,stroke:#ffa726,color:#fff

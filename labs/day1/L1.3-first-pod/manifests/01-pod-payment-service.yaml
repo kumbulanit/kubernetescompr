@@ -1,0 +1,70 @@
+# ==============================================================================
+# L1.3 — The first Pod
+# ==============================================================================
+# This is a BARE POD, and it is deliberately the wrong way to run a service.
+#
+# In L1.3 you will create it, port-forward to it, exec into it, read its logs —
+# and then delete it and watch NOTHING happen. Nothing brings it back. There is
+# no controller watching it, so its desired state died with the object.
+#
+# Ten minutes later, in L1.4, you create a Deployment, delete a pod, and watch
+# it return in seconds. That contrast is the lesson. It is far more durable
+# than being told "always use a Deployment".
+#
+# Do not copy this file as a template for anything real.
+# ==============================================================================
+apiVersion: v1
+kind: Pod
+metadata:
+  name: payment-service-bare
+  namespace: axispay-core
+  labels:
+    app.kubernetes.io/name: payment-service
+    app.kubernetes.io/part-of: axispay
+    app.kubernetes.io/component: core
+    axispay.io/day-introduced: "1"
+    axispay.io/lab: L1.3
+    axispay.io/anti-pattern: "bare-pod"
+spec:
+  # 5s instead of the default 30s: this pod is created and destroyed repeatedly
+  # during the lab, and waiting 30 seconds each time wastes classroom minutes.
+  terminationGracePeriodSeconds: 5
+  containers:
+    - name: payment-service
+      image: axispay/payment-service:1.0.0
+      imagePullPolicy: IfNotPresent      # built locally into Minikube; never pull
+      ports:
+        - name: http
+          containerPort: 8080
+          protocol: TCP
+      env:
+        - name: ENVIRONMENT
+          value: "training"
+        - name: LOG_LEVEL
+          value: "info"
+        # ---- Downward API -------------------------------------------------
+        # Injects pod identity into the process. This is what makes
+        # /api/v1/_info able to report WHICH pod answered — the endpoint you
+        # will use to prove load balancing (L1.5), rollout progress (L2.6)
+        # and anti-affinity spread (L4.6).
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: POD_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.podIP
+        - name: NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        - name: NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        # merchant-service does not exist yet on Day 1 at this point in the lab.
+        # payment-service will start and report NOT READY, which is correct
+        # behaviour and is discussed in L1.3 §9.
+        - name: MERCHANT_SERVICE_URL
+          value: "http://merchant-service.axispay-core.svc.cluster.local:8080"

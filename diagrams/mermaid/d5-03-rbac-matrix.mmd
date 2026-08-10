@@ -1,0 +1,15 @@
+%% D5 M5.2 — the 2x2, including the square that does not exist
+graph TB
+    subgraph RB["+ RoleBinding (one namespace)"]
+        R1["<b>Role</b><br/>Works — permissions in that namespace.<br/><i>the ordinary case</i>"]
+        C1["<b>ClusterRole</b><br/><b>THE USEFUL ONE</b><br/>define the permission set ONCE,<br/>bind it in three namespaces"]
+    end
+    subgraph CRB["+ ClusterRoleBinding (cluster-wide)"]
+        R2["<b>Role</b><br/><b>INVALID</b> — the API rejects it.<br/>A namespaced Role has no meaning<br/>bound cluster-wide."]
+        C2["<b>ClusterRole</b><br/>Every namespace, including ones<br/>that do not exist yet.<br/><i>nodes, storageclasses, CRDs</i>"]
+    end
+    RULE["<b>RBAC is purely additive.</b><br/>There is no deny rule. You protect Secrets<br/>by writing a role that never names them."]
+    C1 --> RULE
+    style C1 fill:#1f3b2b,stroke:#66bb6a,color:#fff
+    style R2 fill:#3b1f1f,stroke:#d32f2f,color:#fff
+    style RULE fill:#3b2f1f,stroke:#ffa726,color:#fff

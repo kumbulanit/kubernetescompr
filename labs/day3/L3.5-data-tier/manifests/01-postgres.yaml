@@ -1,0 +1,142 @@
+# ==============================================================================
+# PostgreSQL — StatefulSet
+# ==============================================================================
+# WHY NOT A DEPLOYMENT?
+#   A Deployment's pods are interchangeable: random names, shared storage or
+#   none, replaced in any order. A database needs the opposite of all three:
+#
+#     stable NAME     postgres-0 is always postgres-0, across reschedules
+#     stable STORAGE  postgres-0 always re-attaches to ITS volume, not any volume
+#     stable ORDER    0 before 1 before 2, and terminated in reverse
+#
+#   A StatefulSet provides all three. That is its entire reason to exist.
+#
+# THE HEADLESS SERVICE is what gives each pod a DNS name:
+#     postgres-0.postgres.axispay-data.svc.cluster.local
+#   clusterIP: None means DNS returns POD IPs rather than one virtual IP —
+#   because you must be able to address a SPECIFIC replica, not "any" replica.
+# ==============================================================================
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: axispay-data
+  labels:
+    app.kubernetes.io/name: postgres
+    app.kubernetes.io/part-of: axispay
+    axispay.io/day-introduced: "3"
+spec:
+  clusterIP: None          # headless — see above
+  selector:
+    app.kubernetes.io/name: postgres
+    app.kubernetes.io/instance: axispay
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: postgres
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres
+  namespace: axispay-data
+  labels: &labels
+    app.kubernetes.io/name: postgres
+    app.kubernetes.io/instance: axispay
+    app.kubernetes.io/version: "17"
+    app.kubernetes.io/component: data
+    app.kubernetes.io/part-of: axispay
+    axispay.io/day-introduced: "3"
+spec:
+  serviceName: postgres     # MUST match the headless Service name above
+  replicas: 1
+  # OrderedReady: pods start 0,1,2 and terminate 2,1,0. For a database that
+  # ordering is not cosmetic — a replica must not start before its primary.
+  podManagementPolicy: OrderedReady
+  updateStrategy:
+    type: RollingUpdate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: postgres
+      app.kubernetes.io/instance: axispay
+  template:
+    metadata:
+      labels: *labels
+    spec:
+      terminationGracePeriodSeconds: 60   # let PostgreSQL checkpoint and close cleanly
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 999                     # the postgres user in the official image
+        runAsGroup: 999
+        # fsGroup makes the kubelet chown the mounted volume to this GID before
+        # the container starts. Without it a non-root process cannot write to a
+        # freshly provisioned volume, and you get "permission denied" on a
+        # directory that looks perfectly fine. This one line is the single most
+        # common cause of a failed first StatefulSet.
+        fsGroup: 999
+        fsGroupChangePolicy: OnRootMismatch
+      containers:
+        - name: postgres
+          image: postgres:17-alpine
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: postgres
+              containerPort: 5432
+          envFrom:
+            - secretRef:
+                name: axispay-db-credentials
+          env:
+            # The official image refuses to initialise into a directory that is
+            # not empty. A mounted volume always contains lost+found, so the
+            # data directory must be a SUBDIRECTORY of the mount point.
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          resources:
+            requests: { cpu: "100m", memory: "256Mi" }
+            limits:   { cpu: "1",    memory: "768Mi" }
+          startupProbe:
+            # Generous: first start runs initdb, creates the schema and loads
+            # 28,000 seed statements. 5s x 60 = 5 minutes.
+            exec: { command: ["pg_isready","-U","axispay_app","-d","axispay"] }
+            periodSeconds: 5
+            failureThreshold: 60
+          livenessProbe:
+            exec: { command: ["pg_isready","-U","axispay_app","-d","axispay"] }
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            # A real query, not just a port check: pg_isready returns success
+            # while the server is still in recovery and refusing connections.
+            exec:
+              command: ["sh","-c","psql -U axispay_app -d axispay -c 'SELECT 1' >/dev/null 2>&1"]
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+            - name: init
+              mountPath: /docker-entrypoint-initdb.d
+              readOnly: true
+      volumes:
+        - name: init
+          configMap:
+            name: postgres-init
+  # volumeClaimTemplates is the StatefulSet's defining feature: it creates ONE
+  # PVC PER REPLICA, named data-postgres-0, data-postgres-1, ... and re-attaches
+  # the same claim to the same ordinal on every reschedule.
+  #
+  # These PVCs are NOT deleted when the StatefulSet is deleted. That is
+  # deliberate: deleting a workload must never silently destroy its data.
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+        labels:
+          app.kubernetes.io/part-of: axispay
+      spec:
+        accessModes: [ReadWriteOnce]
+        storageClassName: axispay-standard
+        resources:
+          requests:
+            storage: 5Gi

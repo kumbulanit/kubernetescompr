@@ -1,0 +1,19 @@
+%% D1 M1.6 — Pod anatomy
+graph TB
+    subgraph POD["<b>POD</b> — smallest schedulable unit · one IP · one lifecycle"]
+        direction TB
+        PAUSE["<b>pause</b><br/>holds network + IPC namespaces open<br/><i>so containers can restart<br/>without losing the IP</i>"]
+        INIT["initContainer<br/><i>runs to completion first</i><br/>(Day 3)"]
+        MAIN["<b>payment-service</b><br/>:8080"]
+        SIDE["sidecar<br/><i>log shipper</i><br/>(Day 5)"]
+        VOL[("shared volume")]
+    end
+    NODE["Node axispay-m02"] --> POD
+    INIT -->|then| MAIN
+    MAIN <-->|localhost| SIDE
+    MAIN --- VOL
+    SIDE --- VOL
+    style POD fill:#1f2b3b,stroke:#42a5f5,color:#fff
+    style PAUSE fill:#2b2b2b,stroke:#888,color:#ccc
+    style INIT fill:#3b2f1f,stroke:#ffa726,color:#fff
+    style SIDE fill:#2b1f3b,stroke:#ab47bc,color:#fff

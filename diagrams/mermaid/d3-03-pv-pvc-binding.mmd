@@ -1,0 +1,12 @@
+%% D3 M3.3 — the claim/bind contract
+graph LR
+    ADMIN["Storage admin<br/><i>SUPPLY</i>"]
+    DEV["Developer<br/><i>DEMAND</i>"]
+    PV["<b>PersistentVolume</b><br/>2Gi · RWO · Retain<br/>cluster-scoped"]
+    PVC["<b>PersistentVolumeClaim</b><br/>'I need 1Gi, RWO'<br/>namespaced"]
+    B{"BIND if capacity,<br/>access mode and<br/>class all agree"}
+    POD["Pod mounts the CLAIM,<br/>never the volume"]
+    ADMIN --> PV --> B
+    DEV --> PVC --> B
+    B --> POD
+    style B fill:#1f3b2b,stroke:#66bb6a,color:#fff

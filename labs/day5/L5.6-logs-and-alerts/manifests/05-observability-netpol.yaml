@@ -1,0 +1,230 @@
+# ==============================================================================
+# NetworkPolicy for the observability tier — and the two hard cases
+# ==============================================================================
+# Day 4 locked down edge, core, async and data. Two namespaces were left open
+# on purpose because their policies only make sense once Prometheus exists:
+#
+#   axispay-ops             node-agent, which talks to the API SERVER
+#   axispay-observability   Prometheus, which talks to EVERYTHING
+#
+# Both are the cases where the simple mental model — "select pods with
+# namespaceSelector and podSelector" — runs out, and it is worth slowing down
+# for them.
+# ==============================================================================
+
+# ------------------------------------------------------------------------------
+# axispay-ops: default deny
+# ------------------------------------------------------------------------------
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  namespace: axispay-ops
+  labels:
+    app.kubernetes.io/part-of: axispay
+    axispay.io/day-introduced: "5"
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns-egress
+  namespace: axispay-ops
+  labels:
+    app.kubernetes.io/part-of: axispay
+    axispay.io/day-introduced: "5"
+spec:
+  podSelector: {}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: kube-system }
+          podSelector:
+            matchLabels: { k8s-app: kube-dns }
+      ports:
+        - { protocol: UDP, port: 53 }
+        - { protocol: TCP, port: 53 }
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-prometheus-scrape
+  namespace: axispay-ops
+  labels:
+    app.kubernetes.io/part-of: axispay
+    axispay.io/day-introduced: "5"
+spec:
+  podSelector: {}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: axispay-observability }
+      ports:
+        - { protocol: TCP, port: 8080 }
+---
+# ------------------------------------------------------------------------------
+# HARD CASE 1 — egress to the Kubernetes API server
+# ------------------------------------------------------------------------------
+# node-agent lists Nodes, so it calls the API server. You cannot express that
+# with a namespaceSelector, because the API server IS NOT A POD. There is
+# nothing in the cluster for a selector to match.
+#
+# What the pod actually talks to is the ClusterIP of the `kubernetes` Service
+# in the `default` namespace, which kube-proxy DNATs to the control plane's
+# real address on the node network. Policy is evaluated against that
+# post-DNAT destination, so the rule has to be an ipBlock covering the node
+# network.
+#
+# FIND YOUR OWN CIDR — do not trust the value below blindly:
+#
+#   kubectl get endpoints kubernetes -n default
+#   NAME         ENDPOINTS            AGE
+#   kubernetes   192.168.49.2:8443    2h
+#
+# 192.168.49.0/24 is the Minikube docker-driver default. The kvm2 driver uses
+# 192.168.39.0/24; a real cluster uses whatever the node subnet is. If
+# node-agent starts logging connection timeouts to the API server after this
+# file is applied, this CIDR is the first thing to check.
+#
+# The narrower alternative — and the better one in production — is to give the
+# API server's own address as a /32.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-node-agent-to-apiserver
+  namespace: axispay-ops
+  labels:
+    app.kubernetes.io/part-of: axispay
+    axispay.io/day-introduced: "5"
+  annotations:
+    axispay.io/warning: >-
+      The CIDR below is the Minikube docker-driver default. Verify it with
+      `kubectl get endpoints kubernetes -n default` before assuming this
+      policy works on your cluster.
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: node-agent
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - ipBlock:
+            cidr: 192.168.49.0/24
+      ports:
+        - { protocol: TCP, port: 8443 }
+        - { protocol: TCP, port: 443 }
+---
+# ------------------------------------------------------------------------------
+# HARD CASE 2 — the observability namespace
+# ------------------------------------------------------------------------------
+# Prometheus scrapes every namespace, Grafana queries Prometheus and Loki,
+# Alertmanager is queried by Prometheus and posts to receivers, and the
+# operator reconciles all of them. Writing a precise policy for that graph
+# means enumerating the internals of three upstream projects and re-doing it
+# on every chart upgrade.
+#
+# So this namespace gets a DELIBERATELY BROAD intra-namespace allow, and the
+# justification is written down rather than left implicit:
+#
+#   - it holds no merchant data and no cardholder data
+#   - it is not reachable from the internet (no Ingress except Grafana, TLS)
+#   - the blast radius of a compromise here is read access to metrics
+#   - the alternative is a policy nobody maintains, which fails open anyway
+#
+# That is a real trade-off, made on purpose. It is not the same thing as
+# forgetting to write a policy. When a security reviewer asks why this
+# namespace is open, this comment is the answer.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-observability-internal
+  namespace: axispay-observability
+  labels:
+    app.kubernetes.io/part-of: axispay
+    axispay.io/day-introduced: "5"
+spec:
+  podSelector: {}
+  policyTypes: [Ingress]
+  ingress:
+    # anything else inside observability
+    - from:
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: axispay-observability }
+    # the ingress controller, for the Grafana Ingress only
+    - from:
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: ingress-nginx }
+      ports:
+        - { protocol: TCP, port: 3000 }
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-observability-egress
+  namespace: axispay-observability
+  labels:
+    app.kubernetes.io/part-of: axispay
+    axispay.io/day-introduced: "5"
+spec:
+  podSelector: {}
+  policyTypes: [Egress]
+  egress:
+    # DNS, before anything else
+    - to:
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: kube-system }
+          podSelector:
+            matchLabels: { k8s-app: kube-dns }
+      ports:
+        - { protocol: UDP, port: 53 }
+        - { protocol: TCP, port: 53 }
+    # Scrape the namespaces that actually expose /metrics on 8080.
+    #
+    # axispay-data is NOT in this list. Postgres, Redis and RabbitMQ do not
+    # export Prometheus metrics on their own — that needs a sidecar exporter,
+    # which this course does not deploy. Opening 9187 and 9121 "just in case"
+    # would be a rule that grants access to nothing, and a policy file full of
+    # rules that do nothing is a policy file nobody reads carefully.
+    #
+    # The data tier is still visible: container CPU, memory and restarts come
+    # from cAdvisor via the KUBELET, not from the pods themselves, so no
+    # policy is involved. What you lose without an exporter is the
+    # database-level detail — connection counts, replication lag, slow
+    # queries. Adding postgres_exporter is the natural next step after this
+    # course.
+    - to:
+        - namespaceSelector:
+            matchExpressions:
+              - key: kubernetes.io/metadata.name
+                operator: In
+                values:
+                  - axispay-edge
+                  - axispay-core
+                  - axispay-async
+                  - axispay-ops
+      ports:
+        - { protocol: TCP, port: 8080 }
+    # kube-state-metrics and the operator live in kube-system on some installs
+    - to:
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: kube-system }
+      ports:
+        - { protocol: TCP, port: 8080 }
+        - { protocol: TCP, port: 8081 }
+    # within observability
+    - to:
+        - namespaceSelector:
+            matchLabels: { kubernetes.io/metadata.name: axispay-observability }
+    # the kubelet's cAdvisor endpoint and the API server, both on the node
+    # network — the same ipBlock problem as node-agent above
+    - to:
+        - ipBlock:
+            cidr: 192.168.49.0/24
+      ports:
+        - { protocol: TCP, port: 10250 }  # kubelet metrics
+        - { protocol: TCP, port: 8443 }   # API server
+        - { protocol: TCP, port: 443 }

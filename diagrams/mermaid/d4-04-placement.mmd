@@ -1,0 +1,14 @@
+%% D4 M4.6 — three mechanisms, three directions
+graph TB
+    NA["<b>nodeSelector / nodeAffinity</b><br/>the POD is attracted to NODES"]
+    PA["<b>podAffinity / podAntiAffinity</b><br/>the POD is attracted to / repelled by OTHER PODS"]
+    TT["<b>taints / tolerations</b><br/>the NODE repels PODS<br/><i>opposite direction</i>"]
+    REQ["<b>required</b><br/>hard. Cannot be satisfied →<br/>Pending FOREVER"]
+    PREF["<b>preferred</b><br/>a scoring hint.<br/>Best effort."]
+    NOTE["required anti-affinity on hostname<br/>= you can NEVER have more replicas<br/>than nodes. That silently caps an HPA."]
+    NA --> REQ
+    PA --> REQ
+    PA --> PREF
+    REQ --> NOTE
+    style REQ fill:#3b2f1f,stroke:#ffa726,color:#fff
+    style NOTE fill:#3b1f1f,stroke:#d32f2f,color:#fff

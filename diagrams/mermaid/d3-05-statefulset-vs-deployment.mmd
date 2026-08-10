@@ -1,0 +1,17 @@
+%% D3 M3.6 — why a database cannot be a Deployment
+graph TB
+    subgraph DEP["<b>Deployment</b> — pods are INTERCHANGEABLE"]
+        D1["payment-service-7d4f-x7k2p"]
+        D2["payment-service-7d4f-m9v4t"]
+        DN["random names<br/>shared or no storage<br/>replaced in any order"]
+    end
+    subgraph SS["<b>StatefulSet</b> — pods have IDENTITY"]
+        S0["postgres-0<br/>→ pvc data-postgres-0<br/>→ postgres-0.postgres.axispay-data"]
+        S1["postgres-1<br/>→ pvc data-postgres-1<br/>→ postgres-1.postgres.axispay-data"]
+        SN["stable name · OWN volume<br/>started 0,1,2 · terminated 2,1,0"]
+    end
+    HS["<b>headless Service</b> clusterIP: None<br/><i>DNS returns POD IPs so you can<br/>address ONE specific replica</i>"]
+    HS --> S0
+    HS --> S1
+    style SS fill:#3b2f1f,stroke:#ffa726,color:#fff
+    style HS fill:#2b1f3b,stroke:#ab47bc,color:#fff

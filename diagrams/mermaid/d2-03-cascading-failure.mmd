@@ -1,0 +1,21 @@
+%% D2 M2.3 — the bug: liveness checking a dependency
+graph TB
+    BLIP["merchant-service unavailable<br/>for 40 seconds<br/><i>a weekly event</i>"]
+    Q{"What does<br/>liveness check?"}
+    GOOD["<b>/healthz</b> — process only"]
+    BAD["<b>/readyz</b> — dependencies"]
+    G1["Readiness fails → pods leave endpoints"]
+    G2["Pods keep running, keep their state"]
+    G3["Dependency returns → pods rejoin<br/><b>in ~10s, no intervention</b>"]
+    B1["Liveness fails on EVERY replica"]
+    B2["<b>ALL pods restart simultaneously</b>"]
+    B3["Cold start, empty pools, thundering herd"]
+    B4["Restart again → CrashLoopBackOff"]
+    B5["<b>Total outage, long after the<br/>original 40s blip was over</b>"]
+    BLIP --> Q
+    Q --> GOOD --> G1 --> G2 --> G3
+    Q --> BAD --> B1 --> B2 --> B3 --> B4 --> B5
+    style GOOD fill:#1f3b2b,stroke:#66bb6a,color:#fff
+    style G3 fill:#1f3b2b,stroke:#66bb6a,color:#fff
+    style BAD fill:#3b1f1f,stroke:#d32f2f,color:#fff
+    style B5 fill:#3b1f1f,stroke:#d32f2f,color:#fff

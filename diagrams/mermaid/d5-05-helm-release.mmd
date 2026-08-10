@@ -1,0 +1,12 @@
+%% D5 M5.3 — what a chart is, and where the state lives
+graph LR
+    V["values.yaml<br/><i>the DATA</i>"] --> T["templates/<br/><i>the SUBSTITUTION</i>"]
+    H["_helpers.tpl<br/><i>named templates</i>"] --> T
+    T --> R["69 rendered objects<br/><i>ordinary YAML</i>"]
+    R --> K["API server"]
+    R --> SEC["<b>Release Secret</b><br/>gzipped copy of the render,<br/>one per revision"]
+    SEC --> RB["helm rollback<br/><i>re-applies a STORED copy —</i><br/><i>it does not re-render from git</i>"]
+    NOTE["<b>Helm is not a controller.</b><br/>Nothing watches your chart.<br/>Between commands, Helm is not running."]
+    K --> NOTE
+    style SEC fill:#2b1f3b,stroke:#8e6fbf,color:#fff
+    style NOTE fill:#3b2f1f,stroke:#ffa726,color:#fff

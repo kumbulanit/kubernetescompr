@@ -1,0 +1,12 @@
+%% D2 M2.4 — the HPA control loop and its denominator
+graph LR
+    POD["Pods<br/><i>actual CPU usage</i>"]
+    KUBELET["kubelet<br/>cAdvisor"]
+    MS["metrics-server"]
+    HPA["<b>HPA</b><br/>every 15s:<br/>desired = ceil(current x util / target)"]
+    DEP["Deployment<br/>spec.replicas"]
+    NOTE["util = usage ÷ <b>REQUEST</b><br/><i>no request → no denominator<br/>→ TARGETS: &lt;unknown&gt; → nothing happens</i>"]
+    POD --> KUBELET --> MS --> HPA --> DEP --> POD
+    HPA -.-> NOTE
+    style HPA fill:#1f3b2b,stroke:#66bb6a,color:#fff
+    style NOTE fill:#3b1f1f,stroke:#d32f2f,color:#fff

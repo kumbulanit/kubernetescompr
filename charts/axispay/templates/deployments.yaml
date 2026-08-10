@@ -1,0 +1,121 @@
+{{/*
+================================================================================
+One template renders every AxisPay Deployment.
+================================================================================
+Fifteen copies of the same file is fifteen places to forget a probe. Ranging
+over .Values.services makes the security context, the probes and the rollout
+strategy structurally identical across the platform — a reviewer checks ONE
+file instead of fifteen.
+
+The cost is indirection: `helm template` is now the only way to see what
+actually gets applied. That is a real trade-off and worth saying out loud in
+class. It is the right trade when the workloads are genuinely similar, and the
+wrong one when they are not (see statefulsets — the data tier is written out
+longhand precisely because each database differs).
+================================================================================
+*/}}
+{{- range $name, $svc := .Values.services }}
+{{- if $svc.enabled }}
+{{- $ns := include "axispay.namespace" (dict "root" $ "zone" $svc.zone "name" $name) }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $name }}
+  namespace: {{ $ns }}
+  labels:
+    {{- include "axispay.labels" $ | nindent 4 }}
+    {{- include "axispay.selectorLabels" (dict "root" $ "name" $name) | nindent 4 }}
+    axispay.io/zone: {{ $svc.zone }}
+  annotations:
+    axispay.io/owner: platform-team
+spec:
+  {{- if not (and $svc.hpa $svc.hpa.enabled) }}
+  {{- /* Omit replicas when an HPA owns the field, or every `helm upgrade`
+       resets the deployment to its chart value and undoes the autoscaler. */}}
+  replicas: {{ $svc.replicas }}
+  {{- end }}
+  revisionHistoryLimit: 5
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: {{ $.Values.strategy.maxUnavailable }}
+      maxSurge: {{ $.Values.strategy.maxSurge }}
+  selector:
+    matchLabels:
+      {{- include "axispay.selectorLabels" (dict "root" $ "name" $name) | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "axispay.labels" $ | nindent 8 }}
+        {{- include "axispay.selectorLabels" (dict "root" $ "name" $name) | nindent 8 }}
+        axispay.io/zone: {{ $svc.zone }}
+      annotations:
+        {{- /* Rolls every pod when the ConfigMap changes. Without this a config
+             edit silently applies only to pods created afterwards. */}}
+        checksum/config: {{ toYaml $.Values.global | sha256sum }}
+    spec:
+      serviceAccountName: {{ $name }}
+      automountServiceAccountToken: {{ $.Values.serviceAccount.automountToken }}
+      terminationGracePeriodSeconds: {{ $.Values.terminationGracePeriodSeconds }}
+      securityContext:
+        {{- include "axispay.podSecurityContext" $ | nindent 8 }}
+      {{- if eq ($svc.antiAffinity | default "none") "required" }}
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - topologyKey: kubernetes.io/hostname
+              labelSelector:
+                matchLabels:
+                  {{- include "axispay.selectorLabels" (dict "root" $ "name" $name) | nindent 18 }}
+      {{- else if eq ($svc.antiAffinity | default "none") "preferred" }}
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                topologyKey: kubernetes.io/hostname
+                labelSelector:
+                  matchLabels:
+                    {{- include "axispay.selectorLabels" (dict "root" $ "name" $name) | nindent 20 }}
+      {{- end }}
+      containers:
+        - name: {{ $name }}
+          image: {{ include "axispay.image" (dict "root" $ "name" $name "tag" $svc.tag) }}
+          imagePullPolicy: {{ $.Values.global.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          env:
+            {{- include "axispay.commonEnv" (dict "root" $ "name" $name) | nindent 12 }}
+            {{- range $k, $v := ($svc.env | default dict) }}
+            - name: {{ $k }}
+              value: {{ $v | quote }}
+            {{- end }}
+            {{- range $k, $ref := ($svc.secretEnv | default dict) }}
+            - name: {{ $k }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $ref.secret }}
+                  key: {{ $ref.key }}
+            {{- end }}
+          resources:
+            {{- toYaml $svc.resources | nindent 12 }}
+          {{- include "axispay.probes" $ | nindent 10 }}
+          lifecycle:
+            preStop:
+              exec:
+                {{- /* Endpoint removal and container termination race. This sleep
+                     lets every kube-proxy stop sending traffic BEFORE the
+                     process starts shutting down. Without it a rollout drops
+                     in-flight payments. */}}
+                command: ["sleep", {{ $.Values.preStopSleepSeconds | quote }}]
+          securityContext:
+            {{- include "axispay.containerSecurityContext" $ | nindent 12 }}
+          volumeMounts:
+            {{- include "axispay.tmpVolumeMounts" $ | nindent 12 }}
+      volumes:
+        {{- include "axispay.tmpVolumes" $ | nindent 8 }}
+{{- end }}
+{{- end }}

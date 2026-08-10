@@ -1,0 +1,16 @@
+#### L1.3 step 6 — /api/v1/_info
+{
+    "service": "payment-service",
+    "version": "1.0.0",
+    "environment": "dev",
+    "pod_name": "payment-service-6d4b9f7c8-p2n8w",
+    "pod_ip": "127.0.0.1",
+    "node_name": "axispay-m01",
+    "namespace": "axispay",
+    "uptime_seconds": 8.3
+}
+
+#### L1.3 step 6 — probe status codes (readyz 200 because deps are up here)
+healthz   200
+readyz    200
+startupz  200

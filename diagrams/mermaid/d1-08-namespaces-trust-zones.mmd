@@ -1,0 +1,23 @@
+%% D1 M1.5 — Namespaces as trust boundaries
+graph TB
+    INT["Merchant systems<br/><i>internet</i>"]
+    subgraph EDGE["<b>axispay-edge</b> — DMZ · pci-scope=false"]
+        GW[edge-gateway]
+        AU[auth-service]
+    end
+    subgraph CORE["<b>axispay-core</b> — CDE · pci-scope=true"]
+        PS[payment-service]
+        MS[merchant-service]
+    end
+    subgraph ASYNC["<b>axispay-async</b> — processing · pci-scope=true"]
+        LATER["settlement · notification<br/>audit · reporting<br/><i>Day 2+</i>"]
+    end
+    INT -->|Day 4: Ingress + TLS| GW
+    GW --> AU
+    GW --> PS
+    PS --> MS
+    PS --> ASYNC
+    GW -.->|"Day 1: ALLOWED (flat network)<br/>Day 4: BLOCKED by NetworkPolicy"| ASYNC
+    style CORE fill:#3b1f2b,stroke:#c2185b,color:#fff
+    style EDGE fill:#2b3b1f,stroke:#689f38,color:#fff
+    style ASYNC fill:#2b2b3b,stroke:#5c6bc0,color:#fff

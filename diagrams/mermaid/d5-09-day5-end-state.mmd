@@ -1,0 +1,48 @@
+%% D5 — the platform at 17:00 on Friday
+graph TB
+    subgraph EDGE["axispay-edge — restricted"]
+        GW["edge-gateway"]
+        AU["auth-service"]
+    end
+    subgraph CORE["axispay-core — restricted"]
+        PS["payment-service<br/><i>HPA 3-8</i>"]
+        MS["merchant-service"]
+        FS["fraud-service<br/><i>HPA 2-6</i>"]
+        RS["routing-service"]
+        LS["ledger-service"]
+        CS["customer-service"]
+    end
+    subgraph ASYNC["axispay-async — restricted"]
+        SS["settlement-service"]
+        NS["notification-service"]
+        AS["audit-service"]
+        RP["reporting-service"]
+        SC["settlement-cron"]
+    end
+    subgraph DATA["axispay-data — baseline"]
+        PG[("postgres")]
+        RD[("redis")]
+        RM[("rabbitmq")]
+    end
+    subgraph OBS["axispay-observability — privileged (Alloy needs hostPath)"]
+        PR["Prometheus"]
+        GF["Grafana"]
+        AM["Alertmanager"]
+        LK["Loki"]
+        SK["alert-sink"]
+    end
+    GW --> PS
+    PS --> FS
+    PS --> LS
+    PS --> PG
+    SS --> PG
+    PR -.->|scrape :8080| CORE
+    PR -.-> EDGE
+    PR -.-> ASYNC
+    AM --> SK
+    HELM["<b>charts/axispay</b><br/>one command · five values files"]
+    HELM --> EDGE
+    HELM --> CORE
+    HELM --> ASYNC
+    style OBS fill:#2b1f3b,stroke:#8e6fbf,color:#fff
+    style HELM fill:#3b2f1f,stroke:#ffa726,color:#fff

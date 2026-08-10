@@ -1,0 +1,54 @@
+# ==============================================================================
+# DEVELOPMENT — a laptop, one engineer, fast feedback
+# ==============================================================================
+# What gets relaxed here and WHY. Every line is a deliberate trade, not an
+# oversight; the same relaxation in values-prod.yaml would be a finding.
+# ==============================================================================
+global:
+  environment: dev
+  logLevel: debug              # verbose logs are the point in dev
+
+# Single replicas: a laptop has no spare CPU and there is no availability
+# requirement. The cost is that every rollout is a brief outage — acceptable
+# when the only user is the person doing the rollout.
+services:
+  edge-gateway:      { replicas: 1 }
+  auth-service:      { replicas: 1 }
+  payment-service:   { replicas: 1, antiAffinity: none, hpa: { enabled: false, minReplicas: 1, maxReplicas: 2, targetCPU: 80 } }
+  merchant-service:  { replicas: 1 }
+  fraud-service:     { replicas: 1, antiAffinity: none, hpa: { enabled: false, minReplicas: 1, maxReplicas: 2, targetCPU: 80 } }
+  routing-service:   { replicas: 1 }
+  ledger-service:    { replicas: 1 }
+  customer-service:  { replicas: 1 }
+  settlement-service: { replicas: 1 }
+  notification-service: { replicas: 1 }
+  audit-service:     { replicas: 1 }
+  reporting-service: { replicas: 1 }
+
+# antiAffinity: required would leave pods Pending on a single-node cluster.
+# PDBs on 1 replica would block every drain. Both off for the same reason.
+podDisruptionBudget:
+  enabled: false
+
+# NetworkPolicy stays ON even in dev. A policy you only enable in production
+# is a policy you first test in production.
+networkPolicy:
+  enabled: true
+
+strategy:
+  maxUnavailable: 1            # with 1 replica, maxSurge alone cannot proceed
+  maxSurge: 1
+preStopSleepSeconds: 2         # no real traffic to drain
+
+ingress:
+  enabled: false               # port-forward is faster than editing /etc/hosts
+
+observability:
+  enabled: false               # no operator on a laptop; the CRs would orphan
+
+data:
+  enabled: true                # dev is self-contained
+  postgres:
+    storage: 1Gi
+  redis:
+    storage: 512Mi

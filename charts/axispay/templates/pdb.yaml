@@ -1,0 +1,27 @@
+{{/*
+A PodDisruptionBudget constrains VOLUNTARY disruption only — drains, upgrades,
+descheduling. It will not save you from a node that catches fire.
+
+maxUnavailable: 1 on a 2-replica service means a drain takes both pods down one
+at a time and never both. Setting minAvailable equal to the replica count would
+block the drain forever, which is a different and worse failure.
+*/}}
+{{- if .Values.podDisruptionBudget.enabled }}
+{{- range $name, $svc := .Values.services }}
+{{- if and $svc.enabled $svc.pdb }}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ $name }}
+  namespace: {{ include "axispay.namespace" (dict "root" $ "zone" $svc.zone "name" $name) }}
+  labels:
+    {{- include "axispay.labels" $ | nindent 4 }}
+spec:
+  maxUnavailable: {{ $svc.pdb.maxUnavailable }}
+  selector:
+    matchLabels:
+      {{- include "axispay.selectorLabels" (dict "root" $ "name" $name) | nindent 6 }}
+{{- end }}
+{{- end }}
+{{- end }}

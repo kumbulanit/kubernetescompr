@@ -1,0 +1,55 @@
+# ==============================================================================
+# STAGING — production's shape at a fraction of its size
+# ==============================================================================
+# Staging exists to catch what dev cannot: rollout behaviour, policy
+# enforcement, probe timing under real latency. So the STRUCTURE matches
+# production exactly and only the NUMBERS shrink. A staging environment that
+# differs structurally from production tests the wrong system.
+# ==============================================================================
+global:
+  environment: staging
+  logLevel: info
+
+services:
+  edge-gateway:      { replicas: 2 }
+  auth-service:      { replicas: 2 }
+  payment-service:   { replicas: 2, hpa: { enabled: true, minReplicas: 2, maxReplicas: 4, targetCPU: 70 } }
+  merchant-service:  { replicas: 2 }
+  fraud-service:     { replicas: 2, hpa: { enabled: true, minReplicas: 2, maxReplicas: 4, targetCPU: 65 } }
+  routing-service:   { replicas: 2 }
+  ledger-service:    { replicas: 2 }
+  customer-service:  { replicas: 2 }
+  settlement-service: { replicas: 1 }
+  notification-service: { replicas: 1 }
+  audit-service:     { replicas: 2 }
+  reporting-service: { replicas: 2 }
+
+podDisruptionBudget:
+  enabled: true
+networkPolicy:
+  enabled: true
+podSecurity:
+  enforce: restricted
+
+ingress:
+  enabled: true
+  api:
+    host: api.staging.axispay.local
+    rateLimitRps: 100          # deliberately HIGHER than prod so load tests run
+  portal:
+    host: portal.staging.axispay.local
+
+observability:
+  enabled: true
+  alerts:
+    enabled: true
+    availabilitySLO: 99.0      # a looser SLO — staging is where things break
+
+loadgen:
+  enabled: true                # staging is where load tests belong
+  targetRps: 40
+
+data:
+  enabled: true
+  postgres:
+    storage: 8Gi

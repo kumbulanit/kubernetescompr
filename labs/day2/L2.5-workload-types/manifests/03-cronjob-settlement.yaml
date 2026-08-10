@@ -1,0 +1,70 @@
+# ==============================================================================
+# settlement-cron — CronJob
+# ==============================================================================
+# A CronJob creates a Job on a schedule. AxisPay settles at 23:00 every night.
+#
+# In L2.5 you temporarily change the schedule to "*/2 * * * *" so you can
+# actually watch it fire, then change it back. Waiting until 23:00 is not a lab.
+#
+#   kubectl get cronjob,job,pods -n axispay-async
+#   kubectl create job --from=cronjob/settlement-cron manual-run -n axispay-async
+# ==============================================================================
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: settlement-cron
+  namespace: axispay-async
+  labels:
+    app.kubernetes.io/name: settlement-cron
+    app.kubernetes.io/instance: axispay
+    app.kubernetes.io/component: async
+    app.kubernetes.io/part-of: axispay
+    axispay.io/day-introduced: "2"
+spec:
+  schedule: "0 23 * * *"            # 23:00 daily
+  timeZone: "Africa/Johannesburg"   # ALWAYS set this. The cluster's idea of
+                                    # midnight is UTC, which is not the
+                                    # merchant's idea of end-of-day. A
+                                    # settlement batch that runs on the wrong
+                                    # calendar day is a real accounting defect.
+  # Forbid: if last night's run is somehow still going, do NOT start a second.
+  # Two concurrent settlement runs would double-count. For a payments batch
+  # this is the only defensible value.
+  #   Allow   - concurrent runs permitted (wrong here)
+  #   Replace - kill the running one and start fresh (wrong here: partial work)
+  concurrencyPolicy: Forbid
+  # If the controller was down at 23:00, still run when it recovers — but only
+  # if less than 10 minutes late. Later than that, skip: a settlement batch
+  # running at 04:00 against the wrong day's data is worse than not running.
+  startingDeadlineSeconds: 600
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      activeDeadlineSeconds: 1800
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: settlement-cron
+            app.kubernetes.io/instance: axispay
+            app.kubernetes.io/component: async
+            app.kubernetes.io/part-of: axispay
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: settlement
+              image: axispay/recon-worker:1.0.0
+              imagePullPolicy: IfNotPresent
+              resources:
+                requests: { cpu: "50m", memory: "64Mi" }
+                limits:   { cpu: "300m", memory: "160Mi" }
+              env:
+                - name: RECON_MODE
+                  value: "normal"
+                - name: PAYMENT_SERVICE_URL
+                  value: "http://payment-service.axispay-core.svc.cluster.local:8080"
+                - name: POD_NAME
+                  valueFrom: { fieldRef: { fieldPath: metadata.name } }
+                - name: NODE_NAME
+                  valueFrom: { fieldRef: { fieldPath: spec.nodeName } }

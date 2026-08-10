@@ -1,0 +1,59 @@
+# ==============================================================================
+# recon-worker — Job
+# ==============================================================================
+# A Job runs a pod to COMPLETION. Success is defined by the container exiting
+# 0 — not by it staying up. That single difference is what separates a Job
+# from a Deployment, and it is why restartPolicy MUST be Never or OnFailure.
+#
+# Watch it:  kubectl get job,pods -n axispay-async -w
+# Logs:      kubectl logs -n axispay-async job/recon-worker
+# ==============================================================================
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: recon-worker
+  namespace: axispay-async
+  labels:
+    app.kubernetes.io/name: recon-worker
+    app.kubernetes.io/instance: axispay
+    app.kubernetes.io/component: async
+    app.kubernetes.io/part-of: axispay
+    axispay.io/day-introduced: "2"
+spec:
+  # How many times to retry the POD before marking the Job failed.
+  # 4 is deliberate: enough to ride out a transient dependency blip, few
+  # enough that a genuinely broken job fails fast instead of retrying forever.
+  backoffLimit: 4
+  # Hard wall-clock ceiling. Without it, a job that hangs on a network call
+  # runs until someone notices — which for a nightly batch means the morning.
+  activeDeadlineSeconds: 600
+  # Clean up 1 hour after finishing, so completed Jobs do not accumulate in
+  # etcd. Long enough that a human can still read the logs.
+  ttlSecondsAfterFinished: 3600
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: recon-worker
+        app.kubernetes.io/instance: axispay
+        app.kubernetes.io/component: async
+        app.kubernetes.io/part-of: axispay
+    spec:
+      # Never / OnFailure only. `Always` is REJECTED for a Job — with Always
+      # the container would restart on success and the Job could never finish.
+      restartPolicy: Never
+      containers:
+        - name: recon-worker
+          image: axispay/recon-worker:1.0.0
+          imagePullPolicy: IfNotPresent
+          resources:
+            requests: { cpu: "50m", memory: "64Mi" }
+            limits:   { cpu: "300m", memory: "160Mi" }
+          env:
+            - name: RECON_MODE
+              value: "normal"       # set to "fail" in L2.5 to watch backoffLimit
+            - name: PAYMENT_SERVICE_URL
+              value: "http://payment-service.axispay-core.svc.cluster.local:8080"
+            - name: POD_NAME
+              valueFrom: { fieldRef: { fieldPath: metadata.name } }
+            - name: NODE_NAME
+              valueFrom: { fieldRef: { fieldPath: spec.nodeName } }

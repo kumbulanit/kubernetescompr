@@ -1,0 +1,60 @@
+{{ .Chart.Name }} {{ .Chart.Version }} — release {{ .Release.Name }}
+Environment: {{ .Values.global.environment }} · images {{ .Values.global.image.repository }}/*:{{ .Values.global.image.tag }}
+
+Deployed:
+{{- range $name, $svc := .Values.services }}{{ if $svc.enabled }}
+  {{ printf "%-22s" $name }} {{ printf "%-6s" $svc.zone }} {{ $svc.replicas }} replica(s){{ if and $svc.hpa $svc.hpa.enabled }}  [HPA {{ $svc.hpa.minReplicas }}–{{ $svc.hpa.maxReplicas }}]{{ end }}
+{{- end }}{{ end }}
+
+1. Watch it come up:
+
+     kubectl get pods -n {{ .Values.namespaces.core }} -w
+
+   Every pod must reach READY 1/1. A pod that is Running but 0/1 is failing
+   its readiness probe — it is alive and refusing traffic on purpose.
+
+2. Confirm the Services have endpoints. This is the check that catches a
+   label typo, which nothing else will tell you about:
+
+     kubectl get endpointslices -n {{ .Values.namespaces.core }}
+
+   An empty ENDPOINTS column means the selector matches nothing.
+{{ if .Values.ingress.enabled }}
+3. Reach the API. Add to /etc/hosts first:
+
+     echo "$(minikube ip -p axispay)  {{ .Values.ingress.api.host }}" | sudo tee -a /etc/hosts
+     curl -sk https://{{ .Values.ingress.api.host }}/api/v1/_info | jq .
+{{- else }}
+3. Ingress is disabled in this environment. Reach the gateway with:
+
+     kubectl port-forward -n {{ .Values.namespaces.edge }} svc/edge-gateway 8080:8080
+{{- end }}
+
+4. Post a payment end to end:
+
+     curl -sk -X POST https://{{ .Values.ingress.api.host }}/api/v1/payments \
+       -H 'X-API-Key: axp_live_7Kq2mVx9RtLd' \
+       -H 'Idempotency-Key: chart-smoke-001' \
+       -H 'Content-Type: application/json' \
+       -d '{"merchant_reference":"AXP-SMOKE-001","amount_minor":125000,"currency":"ZAR","card_token":"tok_visa_4242"}' | jq .
+
+   Expect 201 and a payment_id. Repeat the same command: expect 200 and the
+   header Idempotent-Replay: true. Two identical requests must never take
+   money twice.
+{{ if not .Values.networkPolicy.enabled }}
+WARNING  networkPolicy.enabled is false. Every pod in this release can reach
+         every other pod in the cluster. Acceptable while debugging; never in
+         an environment holding real merchant data.
+{{- end }}
+{{- if ne .Values.podSecurity.enforce "restricted" }}
+WARNING  Pod Security is enforcing "{{ .Values.podSecurity.enforce }}", not
+         "restricted". Workloads may run privileged.
+{{- end }}
+{{- if eq .Values.global.image.tag "latest" }}
+WARNING  image.tag is "latest". You cannot roll back to a tag that moves.
+{{- end }}
+
+Roll back:   helm rollback {{ .Release.Name }} -n {{ .Values.namespaces.core }}
+History:     helm history {{ .Release.Name }} -n {{ .Values.namespaces.core }}
+Uninstall:   helm uninstall {{ .Release.Name }}
+             (PVCs survive by design — the ledger is not disposable.)

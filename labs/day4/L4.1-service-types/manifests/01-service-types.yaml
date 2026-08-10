@@ -1,0 +1,67 @@
+# ==============================================================================
+# The full Service taxonomy — for L4.1
+# ==============================================================================
+# ClusterIP you have used since Day 1. These are the rest.
+# ==============================================================================
+---
+# NodePort: opens the SAME port on EVERY node, and routes to the Service.
+# Useful in development; an attack surface in production. Prefer Ingress.
+apiVersion: v1
+kind: Service
+metadata:
+  name: edge-gateway-nodeport
+  namespace: axispay-edge
+  labels: { app.kubernetes.io/part-of: axispay, axispay.io/day-introduced: "4" }
+  annotations:
+    axispay.io/note: "Demonstration only. Production traffic goes through the Ingress."
+spec:
+  type: NodePort
+  selector:
+    app.kubernetes.io/name: edge-gateway
+    app.kubernetes.io/instance: axispay
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+      nodePort: 30080     # 30000-32767. Omit it and Kubernetes picks one.
+---
+# ExternalName: a CNAME. No proxying, no endpoints, no load balancing — DNS
+# only. Used to give an external dependency a stable in-cluster name so the
+# application never has to change when the real address does.
+apiVersion: v1
+kind: Service
+metadata:
+  name: acquirer-gateway
+  namespace: axispay-core
+  labels: { app.kubernetes.io/part-of: axispay, axispay.io/day-introduced: "4" }
+  annotations:
+    axispay.io/note: >-
+      Stands in for a real acquirer endpoint. routing-service calls
+      acquirer-gateway.axispay-core.svc.cluster.local and neither knows nor
+      cares where that actually points.
+spec:
+  type: ExternalName
+  externalName: acquirer.meridian.example.com
+---
+# Headless: clusterIP None. DNS returns POD IPs, not a virtual IP.
+# Used for StatefulSets (Day 3) and for client-side load balancing.
+apiVersion: v1
+kind: Service
+metadata:
+  name: payment-service-headless
+  namespace: axispay-core
+  labels: { app.kubernetes.io/part-of: axispay, axispay.io/day-introduced: "4" }
+  annotations:
+    axispay.io/note: >-
+      Returns every ready pod IP. This is how a gRPC client does its own load
+      balancing — because kube-proxy balances CONNECTIONS, not requests, and a
+      single long-lived HTTP/2 connection would pin to one pod.
+spec:
+  clusterIP: None
+  selector:
+    app.kubernetes.io/name: payment-service
+    app.kubernetes.io/instance: axispay
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http

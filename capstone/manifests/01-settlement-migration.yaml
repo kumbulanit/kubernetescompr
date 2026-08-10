@@ -1,0 +1,242 @@
+# ==============================================================================
+# Settlement schema migration — release 2.0.0
+# ==============================================================================
+# Part of CR-2026-0814. Run during the capstone change window, under live
+# traffic, with no maintenance window.
+#
+# ORDERING IS THE WHOLE QUESTION, and you must be able to defend your answer.
+#
+# There are only two possible orders, and each has a rule attached:
+#
+#   MIGRATION FIRST  requires the migration to be BACKWARD compatible —
+#                    version 1.1.0 code must keep working against the new
+#                    schema for the length of the rollout.
+#
+#   CODE FIRST       requires the code to be FORWARD compatible — 2.0.0 must
+#                    work against the OLD schema until the migration lands.
+#
+# This migration is deliberately of the first kind: it only ADDS nullable
+# columns and an index. Nothing is dropped, nothing is renamed, no NOT NULL is
+# added without a default. So 1.1.0 and 2.0.0 can both run against it, which
+# is what makes a rolling update possible at all — during a rollout BOTH
+# versions are serving traffic simultaneously.
+#
+# The migration that would break this: `ALTER TABLE settlements RENAME COLUMN
+# file_ref TO settlement_file_ref`. The instant it applies, every 1.1.0 pod
+# still running starts throwing. That change needs the expand/contract pattern
+# across two releases, not one Job.
+#
+#   kubectl apply -f capstone/manifests/
+#   kubectl -n axispay-data logs -f job/settlement-migration-2-0-0
+#   kubectl -n axispay-data wait --for=condition=complete job/settlement-migration-2-0-0 --timeout=300s
+# ==============================================================================
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: settlement-migration-2-0-0
+  namespace: axispay-data
+  labels:
+    app.kubernetes.io/part-of: axispay
+    axispay.io/migration: settlement-2.0.0
+    axispay.io/day-introduced: "5"
+data:
+  migrate.sql: |
+    -- =======================================================================
+    -- settlement schema, 1.1.0 -> 2.0.0
+    -- =======================================================================
+    -- EVERY statement below is idempotent. A Job can be retried — by
+    -- backoffLimit, by a node failure, by a human running it twice at 02:00 —
+    -- and a migration that is not safe to re-run turns a retry into an
+    -- outage.
+    --
+    -- The transaction is what makes it atomic: either the whole migration
+    -- applies or none of it does. A half-applied schema change is the worst
+    -- outcome available, because the code cannot tell which half it got.
+    BEGIN;
+
+    -- Advisory lock: if two Jobs somehow run at once, the second blocks here
+    -- rather than racing. Released automatically at COMMIT.
+    SELECT pg_advisory_xact_lock(2026081400);
+
+    -- 1. Settlement cut-off time. Nullable, so existing rows are valid.
+    ALTER TABLE settlements
+        ADD COLUMN IF NOT EXISTS cutoff_at TIMESTAMPTZ;
+
+    -- 2. Which acquirer the batch was settled through. Nullable for the same
+    --    reason: back-filling it for historical rows is a separate job with a
+    --    separate risk profile, and it does not belong in a change window.
+    ALTER TABLE settlements
+        ADD COLUMN IF NOT EXISTS acquirer_id TEXT;
+
+    -- 3. Reconciliation state. DEFAULT plus NOT NULL is safe in PostgreSQL 11+
+    --    because the default is stored in the catalogue rather than rewritten
+    --    into every row — on an older version this single line would take an
+    --    ACCESS EXCLUSIVE lock and rewrite the table, which under live traffic
+    --    means an outage. Know your version before you write this.
+    ALTER TABLE settlements
+        ADD COLUMN IF NOT EXISTS recon_state TEXT NOT NULL DEFAULT 'unreconciled';
+
+    DO $$
+    BEGIN
+        IF NOT EXISTS (
+            SELECT 1 FROM pg_constraint WHERE conname = 'settlements_recon_state'
+        ) THEN
+            ALTER TABLE settlements
+                ADD CONSTRAINT settlements_recon_state
+                CHECK (recon_state IN ('unreconciled','reconciled','disputed'));
+        END IF;
+    END $$;
+
+    -- 4. The index the new reporting endpoint needs.
+    --    CONCURRENTLY cannot run inside a transaction, so this one is created
+    --    the ordinary way. On 5,000 rows that is milliseconds. On 50 million
+    --    it would lock writes for minutes, and the correct answer there is a
+    --    separate Job outside the transaction using CREATE INDEX CONCURRENTLY.
+    CREATE INDEX IF NOT EXISTS settlements_recon_state_idx
+        ON settlements (recon_state, batch_date DESC);
+
+    -- 5. Record what was applied. A migration nobody can prove ran is a
+    --    migration you will run again by mistake.
+    CREATE TABLE IF NOT EXISTS schema_migrations (
+        version     TEXT PRIMARY KEY,
+        applied_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        applied_by  TEXT        NOT NULL
+    );
+    INSERT INTO schema_migrations (version, applied_by)
+        VALUES ('2.0.0-settlement', 'CR-2026-0814')
+        ON CONFLICT (version) DO NOTHING;
+
+    COMMIT;
+
+  verify.sql: |
+    -- Run after the migration. Output is read by the Job and by the student.
+    \echo '--- columns added'
+    SELECT column_name, data_type, is_nullable, column_default
+      FROM information_schema.columns
+     WHERE table_name = 'settlements'
+       AND column_name IN ('cutoff_at','acquirer_id','recon_state')
+     ORDER BY column_name;
+
+    \echo '--- migration recorded'
+    SELECT version, applied_by, applied_at FROM schema_migrations ORDER BY applied_at;
+
+    \echo '--- the ledger still balances (a migration must not move money)'
+    SELECT COALESCE(SUM(amount_minor),0) AS ledger_total FROM ledger_entries;
+
+    \echo '--- every settlement still satisfies gross = fees + net'
+    SELECT COUNT(*) AS unbalanced_settlements
+      FROM settlements WHERE gross_minor <> fees_minor + net_minor;
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: settlement-migration-2-0-0
+  namespace: axispay-data
+  labels:
+    app.kubernetes.io/name: settlement-migration
+    app.kubernetes.io/part-of: axispay
+    axispay.io/migration: settlement-2.0.0
+    axispay.io/day-introduced: "5"
+  annotations:
+    kubernetes.io/change-cause: "CR-2026-0814 settlement schema 1.1.0 -> 2.0.0"
+spec:
+  # Two retries. Enough to ride out a transient connection failure; few enough
+  # that a genuinely broken migration fails fast instead of hammering the
+  # database during a change window.
+  backoffLimit: 2
+  # A migration still running after ten minutes is stuck, not slow. Failing is
+  # better than holding locks on the settlement table under live traffic.
+  activeDeadlineSeconds: 600
+  ttlSecondsAfterFinished: 3600
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: settlement-migration
+        app.kubernetes.io/part-of: axispay
+    spec:
+      # Never. Not OnFailure: a partially-applied migration should produce a
+      # failed Job that a human looks at, not a pod that quietly tries again
+      # inside the same Job with no record of the first attempt.
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 70            # the postgres image's own uid
+        runAsGroup: 70
+        fsGroup: 70
+        seccompProfile:
+          type: RuntimeDefault
+      initContainers:
+        # Do not start a migration against a database that is not accepting
+        # connections. Without this the Job burns its backoffLimit on a
+        # Postgres that was merely still starting.
+        - name: wait-for-postgres
+          image: postgres:17-alpine
+          command:
+            - sh
+            - -c
+            - |
+              until pg_isready -h postgres.axispay-data.svc.cluster.local -U axispay_app -d axispay; do
+                echo "waiting for postgres..."; sleep 2
+              done
+              echo "postgres is accepting connections"
+          env:
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef: { name: axispay-db-credentials, key: POSTGRES_PASSWORD }
+          resources:
+            requests: { cpu: "10m", memory: "32Mi" }
+            limits:   { cpu: "100m", memory: "64Mi" }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ["ALL"] }
+      containers:
+        - name: migrate
+          image: postgres:17-alpine
+          command:
+            - sh
+            - -c
+            - |
+              set -e
+              echo "=== applying settlement migration 2.0.0 ==="
+              psql -v ON_ERROR_STOP=1 -f /sql/migrate.sql
+              echo
+              echo "=== verifying ==="
+              psql -v ON_ERROR_STOP=1 -f /sql/verify.sql
+              echo
+              echo "migration complete"
+          env:
+            - name: PGHOST
+              value: postgres.axispay-data.svc.cluster.local
+            - name: PGUSER
+              value: axispay_app
+            - name: PGDATABASE
+              value: axispay
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef: { name: axispay-db-credentials, key: POSTGRES_PASSWORD }
+            # Fail rather than hang. A migration waiting forever on a lock is
+            # a migration that has already failed, it just has not said so.
+            - name: PGOPTIONS
+              value: "-c lock_timeout=10s -c statement_timeout=120s"
+          volumeMounts:
+            - name: sql
+              mountPath: /sql
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+          resources:
+            requests: { cpu: "50m", memory: "64Mi" }
+            limits:   { cpu: "300m", memory: "192Mi" }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ["ALL"] }
+      volumes:
+        - name: sql
+          configMap:
+            name: settlement-migration-2-0-0
+        - name: tmp
+          emptyDir:
+            sizeLimit: 32Mi

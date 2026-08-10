@@ -1,0 +1,39 @@
+{{/*
+Two Ingress objects, not one with two rules — so the merchant API and the
+internal reporting portal can carry different rate limits and be revoked
+independently. A single object means one mistake takes both down.
+*/}}
+{{- if .Values.ingress.enabled }}
+{{- range $key, $ing := (omit .Values.ingress "enabled" "className" "sslRedirect") }}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: axispay-{{ $key }}
+  namespace: {{ $.Values.namespaces.edge }}
+  labels:
+    {{- include "axispay.labels" $ | nindent 4 }}
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: {{ $.Values.ingress.sslRedirect | quote }}
+    nginx.ingress.kubernetes.io/limit-rps: {{ $ing.rateLimitRps | quote }}
+    nginx.ingress.kubernetes.io/proxy-body-size: "1m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "30"
+spec:
+  ingressClassName: {{ $.Values.ingress.className }}
+  tls:
+    - hosts:
+        - {{ $ing.host }}
+      secretName: {{ $ing.tlsSecret }}
+  rules:
+    - host: {{ $ing.host }}
+      http:
+        paths:
+          - path: {{ $ing.path }}
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ $ing.service }}
+                port:
+                  name: http
+{{- end }}
+{{- end }}

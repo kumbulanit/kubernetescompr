@@ -1,0 +1,121 @@
+# ==============================================================================
+# Bindings — connecting subjects to roles
+# ==============================================================================
+# THE DECISION THAT MATTERS on every line below: RoleBinding or
+# ClusterRoleBinding?
+#
+# A RoleBinding referencing a ClusterRole applies that ClusterRole's rules
+# ONLY within the RoleBinding's namespace. That is the pattern you want almost
+# every time: define the permission set once, grant it narrowly.
+#
+# A ClusterRoleBinding grants everywhere, forever, including namespaces created
+# next year. Use it only for genuinely cluster-wide things.
+# ==============================================================================
+---
+# Auditor: read-only in the three AxisPay namespaces ONLY.
+# Three RoleBindings, not one ClusterRoleBinding — that is the whole point.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: axispay-auditor
+  namespace: axispay-core
+  labels: { app.kubernetes.io/part-of: axispay, axispay.io/day-introduced: "5" }
+subjects:
+  - kind: User
+    name: auditor@axis.example
+    apiGroup: rbac.authorization.k8s.io
+roleRef:
+  kind: ClusterRole            # the RULES are cluster-scoped...
+  name: axispay-auditor
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: axispay-auditor
+  namespace: axispay-edge
+  labels: { app.kubernetes.io/part-of: axispay, axispay.io/day-introduced: "5" }
+subjects:
+  - kind: User
+    name: auditor@axis.example
+    apiGroup: rbac.authorization.k8s.io
+roleRef:
+  kind: ClusterRole
+  name: axispay-auditor
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: axispay-auditor
+  namespace: axispay-async
+  labels: { app.kubernetes.io/part-of: axispay, axispay.io/day-introduced: "5" }
+subjects:
+  - kind: User
+    name: auditor@axis.example
+    apiGroup: rbac.authorization.k8s.io
+roleRef:
+  kind: ClusterRole            # ...but this binding scopes them to ONE namespace
+  name: axispay-auditor
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: axispay-deployer
+  namespace: axispay-core
+  labels: { app.kubernetes.io/part-of: axispay, axispay.io/day-introduced: "5" }
+subjects:
+  - kind: Group
+    name: axispay-platform-team
+    apiGroup: rbac.authorization.k8s.io
+roleRef:
+  kind: Role
+  name: axispay-deployer
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: axispay-oncall
+  namespace: axispay-core
+  labels: { app.kubernetes.io/part-of: axispay, axispay.io/day-introduced: "5" }
+subjects:
+  - kind: Group
+    name: axispay-oncall
+    apiGroup: rbac.authorization.k8s.io
+roleRef:
+  kind: Role
+  name: axispay-oncall
+  apiGroup: rbac.authorization.k8s.io
+---
+# Prometheus genuinely needs cluster-wide discovery, so this one IS a
+# ClusterRoleBinding — and it is worth pointing at as the exception that
+# proves the rule.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: axispay-prometheus
+  labels: { app.kubernetes.io/part-of: axispay, axispay.io/day-introduced: "5" }
+subjects:
+  - kind: ServiceAccount
+    name: prometheus
+    namespace: axispay-observability
+roleRef:
+  kind: ClusterRole
+  name: axispay-prometheus
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: axispay-node-agent
+  labels: { app.kubernetes.io/part-of: axispay, axispay.io/day-introduced: "5" }
+subjects:
+  - kind: ServiceAccount
+    name: node-agent
+    namespace: axispay-ops
+roleRef:
+  kind: ClusterRole
+  name: axispay-node-reader
+  apiGroup: rbac.authorization.k8s.io

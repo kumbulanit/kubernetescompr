@@ -1,0 +1,32 @@
+%% D1 M1.4 — What happens when you run kubectl apply
+%% Use: live-demo slide. Animate one step at a time.
+sequenceDiagram
+    autonumber
+    participant U as kubectl
+    participant A as kube-apiserver
+    participant E as etcd
+    participant C as controller-manager
+    participant S as kube-scheduler
+    participant K as kubelet (m02)
+    participant R as containerd
+
+    U->>A: POST /apis/apps/v1/.../deployments
+    A->>A: authenticate → authorise → admission
+    A->>E: persist Deployment
+    E-->>A: committed
+    A-->>U: 201 Created
+    Note over U,A: kubectl is DONE. Nothing is running yet.
+
+    C->>A: watch: new Deployment
+    C->>A: create ReplicaSet
+    C->>A: watch: new ReplicaSet
+    C->>A: create 3 Pods (nodeName empty)
+
+    S->>A: watch: unscheduled Pods
+    S->>S: filter nodes → score → pick
+    S->>A: bind Pod → node m02
+
+    K->>A: watch: Pods where nodeName = m02
+    K->>R: create container (CRI)
+    R-->>K: running
+    K->>A: update Pod status → Running

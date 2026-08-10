@@ -1,0 +1,107 @@
+# ==============================================================================
+# RabbitMQ — StatefulSet
+# ==============================================================================
+# The event backbone. payment-service publishes; notification, audit and
+# settlement consume. Delivery is AT-LEAST-ONCE, so every consumer must be
+# idempotent — which is why the audit table has a unique constraint and the
+# settlement table has settlements_unique_batch.
+# ==============================================================================
+apiVersion: v1
+kind: Service
+metadata:
+  name: rabbitmq
+  namespace: axispay-data
+  labels:
+    app.kubernetes.io/name: rabbitmq
+    app.kubernetes.io/part-of: axispay
+    axispay.io/day-introduced: "3"
+spec:
+  clusterIP: None
+  selector:
+    app.kubernetes.io/name: rabbitmq
+    app.kubernetes.io/instance: axispay
+  ports:
+    - name: amqp
+      port: 5672
+      targetPort: amqp
+    - name: management
+      port: 15672
+      targetPort: management
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: rabbitmq
+  namespace: axispay-data
+  labels: &labels
+    app.kubernetes.io/name: rabbitmq
+    app.kubernetes.io/instance: axispay
+    app.kubernetes.io/version: "4"
+    app.kubernetes.io/component: data
+    app.kubernetes.io/part-of: axispay
+    axispay.io/day-introduced: "3"
+spec:
+  serviceName: rabbitmq
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: rabbitmq
+      app.kubernetes.io/instance: axispay
+  template:
+    metadata:
+      labels: *labels
+    spec:
+      terminationGracePeriodSeconds: 45
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 999
+        runAsGroup: 999
+        fsGroup: 999
+      containers:
+        - name: rabbitmq
+          image: rabbitmq:4-management-alpine
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: amqp
+              containerPort: 5672
+            - name: management
+              containerPort: 15672
+          envFrom:
+            - secretRef:
+                name: axispay-rabbitmq-credentials
+          env:
+            # RabbitMQ's node name embeds the hostname. A StatefulSet gives a
+            # STABLE hostname, so the node can find its own on-disk state after
+            # a restart. With a Deployment's random names it would come up as a
+            # brand-new node every time and lose every durable queue.
+            - name: RABBITMQ_NODENAME
+              value: "rabbit@localhost"
+            - name: RABBITMQ_USE_LONGNAME
+              value: "false"
+          resources:
+            requests: { cpu: "100m", memory: "256Mi" }
+            limits:   { cpu: "600m", memory: "640Mi" }
+          startupProbe:
+            exec: { command: ["rabbitmq-diagnostics","-q","ping"] }
+            periodSeconds: 5
+            failureThreshold: 30
+          livenessProbe:
+            exec: { command: ["rabbitmq-diagnostics","-q","ping"] }
+            periodSeconds: 20
+            timeoutSeconds: 10
+          readinessProbe:
+            exec: { command: ["rabbitmq-diagnostics","-q","check_running","check_local_alarms"] }
+            periodSeconds: 15
+            timeoutSeconds: 10
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/rabbitmq
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: [ReadWriteOnce]
+        storageClassName: axispay-standard
+        resources:
+          requests:
+            storage: 2Gi

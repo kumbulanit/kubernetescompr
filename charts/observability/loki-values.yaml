@@ -1,0 +1,87 @@
+# ==============================================================================
+# Loki — single-binary mode for the classroom
+# ==============================================================================
+# Loki indexes LABELS, not log content. That one design decision explains
+# almost everything about how you use it:
+#
+#   - a query must start with a label selector: {namespace="axispay-core"}
+#   - filtering on content (|= "error", | json | level="error") is a scan
+#   - a high-cardinality label — pod, correlation_id, payment_id — creates a
+#     separate stream per value and will fall over
+#
+# So correlation_id lives in the LOG BODY as JSON and is queried with `| json`,
+# never as a label. Getting that wrong is the single most common way to make
+# Loki unusable, and it is worth demonstrating in L5.5.
+#
+#   helm repo add grafana https://grafana.github.io/helm-charts
+#   helm upgrade --install loki grafana/loki \
+#     -n axispay-observability -f charts/observability/loki-values.yaml
+# ==============================================================================
+
+deploymentMode: SingleBinary
+
+loki:
+  auth_enabled: false          # no multi-tenancy in a training cluster
+  commonConfig:
+    replication_factor: 1
+  storage:
+    type: filesystem
+  schemaConfig:
+    configs:
+      - from: "2024-04-01"
+        store: tsdb
+        object_store: filesystem
+        schema: v13
+        index:
+          prefix: index_
+          period: 24h
+  limits_config:
+    retention_period: 24h      # one day. This is a laptop.
+    # Guard rails that exist because a runaway service can otherwise fill the
+    # disk during a single lab.
+    ingestion_rate_mb: 8
+    ingestion_burst_size_mb: 16
+    max_streams_per_user: 5000
+    reject_old_samples: true
+    reject_old_samples_max_age: 24h
+  compactor:
+    retention_enabled: true
+    delete_request_store: filesystem
+
+singleBinary:
+  replicas: 1
+  persistence:
+    enabled: true
+    size: 4Gi
+    storageClass: standard
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits:   { cpu: 500m, memory: 768Mi }
+
+# Everything below is the distributed topology. Off, because single-binary
+# mode is doing the work and running empty deployments teaches nothing.
+read:       { replicas: 0 }
+write:      { replicas: 0 }
+backend:    { replicas: 0 }
+chunksCache:
+  enabled: false               # memcached wants 8Gi by default. On a laptop, no.
+resultsCache:
+  enabled: false
+
+monitoring:
+  selfMonitoring:
+    enabled: false
+    grafanaAgent:
+      installOperator: false
+lokiCanary:
+  enabled: false
+
+test:
+  enabled: false
+
+gateway:
+  enabled: true
+  replicas: 1
+  resources:
+    requests: { cpu: 25m, memory: 48Mi }
+    limits:   { cpu: 150m, memory: 128Mi }

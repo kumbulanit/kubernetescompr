@@ -1,0 +1,235 @@
+# ==============================================================================
+# postgres-init — schema applied automatically on first start
+# ==============================================================================
+# GENERATED from data/schema/01-schema.sql. Regenerate with:
+#   make seed-configmap
+#
+# The postgres image runs anything in /docker-entrypoint-initdb.d ONCE, on an
+# empty data directory. Mounting this ConfigMap there means a fresh
+# StatefulSet comes up with the schema already in place.
+#
+# SIZE MATTERS: a ConfigMap is capped at 1 MiB (an etcd limit). This schema is
+# 10 KiB and fits comfortably. The 8 MB seed file does NOT — which is
+# why scripts/setup/05-seed-database.sh pipes it into psql instead. That is a
+# real constraint, and the reason production seed data lives in an init Job or
+# an object store rather than a ConfigMap.
+# ==============================================================================
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-init
+  namespace: axispay-data
+  labels:
+    app.kubernetes.io/name: postgres-init
+    app.kubernetes.io/part-of: axispay
+    axispay.io/day-introduced: "3"
+data:
+  01-schema.sql: |
+    -- =============================================================================
+    -- AxisPay — database schema
+    -- =============================================================================
+    -- PostgreSQL 17. Applied by an init container before any service starts (L3.6).
+    --
+    -- TWO RULES ENFORCED BY THE SCHEMA ITSELF, not by application code:
+    --
+    --   1. Money is an INTEGER in MINOR UNITS plus an ISO-4217 currency code.
+    --      There is no NUMERIC and no FLOAT in the money path anywhere. Floating
+    --      point cannot represent 0.1 exactly; in a ledger that must balance across
+    --      ten thousand entries that is not a rounding curiosity, it is an audit
+    --      finding. A CHECK constraint makes it impossible to store a negative.
+    --
+    --   2. No card number exists in this database. Not in a column, not in a
+    --      comment, not in a fixture. Only tokens of the form tok_… , plus brand
+    --      and last four digits. That is the tokenisation boundary that keeps
+    --      axispay-edge out of the cardholder data environment.
+    -- =============================================================================
+    
+    BEGIN;
+    
+    CREATE TABLE IF NOT EXISTS merchants (
+        merchant_id          TEXT PRIMARY KEY,
+        legal_name           TEXT        NOT NULL,
+        trading_name         TEXT        NOT NULL,
+        country              CHAR(2)     NOT NULL,
+        mcc                  CHAR(4)     NOT NULL,
+        kyc_status           TEXT        NOT NULL
+                             CHECK (kyc_status IN ('verified','pending','review','rejected')),
+        mdr_bps              INTEGER     NOT NULL CHECK (mdr_bps BETWEEN 0 AND 1000),
+        fixed_fee_minor      BIGINT      NOT NULL CHECK (fixed_fee_minor >= 0),
+        settlement_currency  CHAR(3)     NOT NULL,
+        settlement_bank_ref  TEXT,
+        webhook_url          TEXT,
+        active               BOOLEAN     NOT NULL DEFAULT TRUE,
+        created_at           TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    
+    CREATE TABLE IF NOT EXISTS customers (
+        customer_id     TEXT PRIMARY KEY,
+        merchant_id     TEXT        NOT NULL REFERENCES merchants(merchant_id),
+        email           TEXT,
+        full_name       TEXT,
+        country         CHAR(2),
+        -- Card TOKEN only. There is deliberately no PAN column.
+        card_token      TEXT        NOT NULL,
+        card_brand      TEXT        NOT NULL CHECK (card_brand IN ('visa','mastercard','amex')),
+        card_last4      CHAR(4)     NOT NULL,
+        card_exp_month  SMALLINT    CHECK (card_exp_month BETWEEN 1 AND 12),
+        card_exp_year   SMALLINT    CHECK (card_exp_year BETWEEN 2024 AND 2040),
+        issuer_country  CHAR(2),
+        created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_customers_merchant ON customers(merchant_id);
+    CREATE INDEX IF NOT EXISTS idx_customers_token    ON customers(card_token);
+    
+    CREATE TABLE IF NOT EXISTS acquirers (
+        acquirer_code   TEXT PRIMARY KEY,
+        name            TEXT    NOT NULL,
+        currencies      TEXT[]  NOT NULL,
+        cost_bps        INTEGER NOT NULL CHECK (cost_bps >= 0),
+        success_rate    NUMERIC(5,4) NOT NULL CHECK (success_rate BETWEEN 0 AND 1),
+        base_latency_ms INTEGER NOT NULL,
+        active          BOOLEAN NOT NULL DEFAULT TRUE
+    );
+    
+    CREATE TABLE IF NOT EXISTS routing_rules (
+        rule_id     SERIAL PRIMARY KEY,
+        priority    INTEGER NOT NULL,
+        currency    CHAR(3) NOT NULL,
+        min_minor   BIGINT  NOT NULL CHECK (min_minor >= 0),
+        max_minor   BIGINT  NOT NULL,
+        card_brand  TEXT,
+        acquirer    TEXT    NOT NULL REFERENCES acquirers(acquirer_code),
+        active      BOOLEAN NOT NULL DEFAULT TRUE,
+        CHECK (max_minor > min_minor)
+    );
+    CREATE INDEX IF NOT EXISTS idx_routing_priority ON routing_rules(priority) WHERE active;
+    
+    CREATE TABLE IF NOT EXISTS payments (
+        payment_id      TEXT PRIMARY KEY,
+        reference       TEXT        NOT NULL UNIQUE,
+        merchant_id     TEXT        NOT NULL REFERENCES merchants(merchant_id),
+        customer_id     TEXT        REFERENCES customers(customer_id),
+        -- money: integer minor units + currency. Never a float.
+        amount_minor    BIGINT      NOT NULL CHECK (amount_minor > 0),
+        currency        CHAR(3)     NOT NULL,
+        fee_minor       BIGINT      NOT NULL CHECK (fee_minor >= 0),
+        net_minor       BIGINT      NOT NULL,
+        status          TEXT        NOT NULL
+                        CHECK (status IN ('created','risk_checked','routed','authorized',
+                                          'captured','settled','refunded','voided',
+                                          'declined','failed')),
+        card_token      TEXT        NOT NULL,
+        card_brand      TEXT,
+        card_last4      CHAR(4),
+        risk_score      SMALLINT    CHECK (risk_score BETWEEN 0 AND 100),
+        acquirer        TEXT        REFERENCES acquirers(acquirer_code),
+        auth_code       TEXT,
+        decline_reason  TEXT,
+        description     TEXT,
+        -- Idempotency enforced by the DATABASE, not just by a cache. A retry that
+        -- races the original cannot create two payments, even across replicas.
+        idempotency_key TEXT UNIQUE,
+        created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        -- THE money invariant, enforced in the schema.
+        CONSTRAINT payments_balance CHECK (amount_minor = fee_minor + net_minor)
+    );
+    CREATE INDEX IF NOT EXISTS idx_payments_merchant ON payments(merchant_id);
+    CREATE INDEX IF NOT EXISTS idx_payments_status   ON payments(status);
+    CREATE INDEX IF NOT EXISTS idx_payments_created  ON payments(created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_payments_currency ON payments(currency);
+    
+    CREATE TABLE IF NOT EXISTS refunds (
+        refund_id     TEXT PRIMARY KEY,
+        payment_id    TEXT        NOT NULL REFERENCES payments(payment_id),
+        amount_minor  BIGINT      NOT NULL CHECK (amount_minor > 0),
+        currency      CHAR(3)     NOT NULL,
+        reason        TEXT,
+        status        TEXT        NOT NULL CHECK (status IN ('pending','completed','failed')),
+        created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_refunds_payment ON refunds(payment_id);
+    
+    -- Double-entry ledger. APPEND ONLY: corrections are new entries, never updates.
+    -- Every journal must balance: sum(DR) = sum(CR).
+    CREATE TABLE IF NOT EXISTS ledger_entries (
+        entry_id      BIGSERIAL PRIMARY KEY,
+        journal_id    TEXT        NOT NULL,
+        account       TEXT        NOT NULL,
+        direction     CHAR(2)     NOT NULL CHECK (direction IN ('DR','CR')),
+        amount_minor  BIGINT      NOT NULL CHECK (amount_minor > 0),
+        currency      CHAR(3)     NOT NULL,
+        payment_id    TEXT        REFERENCES payments(payment_id),
+        created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_ledger_journal ON ledger_entries(journal_id);
+    CREATE INDEX IF NOT EXISTS idx_ledger_payment ON ledger_entries(payment_id);
+    
+    CREATE TABLE IF NOT EXISTS settlements (
+        settlement_id  TEXT PRIMARY KEY,
+        merchant_id    TEXT        NOT NULL REFERENCES merchants(merchant_id),
+        currency       CHAR(3)     NOT NULL,
+        gross_minor    BIGINT      NOT NULL CHECK (gross_minor >= 0),
+        fees_minor     BIGINT      NOT NULL CHECK (fees_minor >= 0),
+        net_minor      BIGINT      NOT NULL,
+        txn_count      INTEGER     NOT NULL CHECK (txn_count >= 0),
+        batch_date     DATE        NOT NULL,
+        status         TEXT        NOT NULL CHECK (status IN ('pending','sent','settled','failed')),
+        file_ref       TEXT,
+        created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        CONSTRAINT settlements_balance CHECK (gross_minor = fees_minor + net_minor),
+        -- One batch per merchant per currency per day. This is the constraint that
+        -- makes the nightly CronJob safe to retry: a duplicate run cannot double-settle.
+        CONSTRAINT settlements_unique_batch UNIQUE (merchant_id, currency, batch_date)
+    );
+    
+    CREATE TABLE IF NOT EXISTS settlement_items (
+        settlement_id TEXT   NOT NULL REFERENCES settlements(settlement_id),
+        payment_id    TEXT   NOT NULL REFERENCES payments(payment_id),
+        amount_minor  BIGINT NOT NULL,
+        fee_minor     BIGINT NOT NULL,
+        PRIMARY KEY (settlement_id, payment_id)
+    );
+    
+    -- Append-only audit log. Never updated, never deleted. Seven-year retention.
+    CREATE TABLE IF NOT EXISTS audit_events (
+        event_id       BIGSERIAL PRIMARY KEY,
+        occurred_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        actor          TEXT        NOT NULL,
+        action         TEXT        NOT NULL,
+        entity_type    TEXT        NOT NULL,
+        entity_id      TEXT,
+        correlation_id TEXT,
+        payload        JSONB
+    );
+    CREATE INDEX IF NOT EXISTS idx_audit_correlation ON audit_events(correlation_id);
+    CREATE INDEX IF NOT EXISTS idx_audit_entity      ON audit_events(entity_type, entity_id);
+    CREATE INDEX IF NOT EXISTS idx_audit_occurred    ON audit_events(occurred_at DESC);
+    
+    CREATE TABLE IF NOT EXISTS notifications (
+        notification_id TEXT PRIMARY KEY,
+        merchant_id     TEXT        NOT NULL REFERENCES merchants(merchant_id),
+        payment_id      TEXT        REFERENCES payments(payment_id),
+        channel         TEXT        NOT NULL CHECK (channel IN ('webhook','email','sms')),
+        endpoint        TEXT,
+        status          TEXT        NOT NULL CHECK (status IN ('pending','delivered','failed','dead_letter')),
+        attempts        SMALLINT    NOT NULL DEFAULT 0,
+        last_error      TEXT,
+        created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_notifications_status ON notifications(status);
+    
+    -- Convenience views used by the reconciliation Job and the Day 5 dashboards.
+    CREATE OR REPLACE VIEW v_ledger_balance AS
+    SELECT currency,
+           SUM(CASE WHEN direction = 'DR' THEN amount_minor ELSE 0 END) AS total_debits,
+           SUM(CASE WHEN direction = 'CR' THEN amount_minor ELSE 0 END) AS total_credits,
+           SUM(CASE WHEN direction = 'DR' THEN amount_minor ELSE -amount_minor END) AS imbalance
+    FROM ledger_entries GROUP BY currency;
+    
+    CREATE OR REPLACE VIEW v_daily_volume AS
+    SELECT DATE(created_at) AS day, currency, status,
+           COUNT(*) AS txn_count, SUM(amount_minor) AS gross_minor, SUM(fee_minor) AS fees_minor
+    FROM payments GROUP BY 1,2,3 ORDER BY 1 DESC;
+    
+    COMMIT;

@@ -1,0 +1,18 @@
+%% D3 M3.4 — the failure WaitForFirstConsumer prevents
+graph TB
+    subgraph BAD["volumeBindingMode: Immediate"]
+        B1["PVC created"]
+        B2["volume provisioned on NODE A<br/><i>provisioner picks</i>"]
+        B3["scheduler later picks NODE B<br/><i>cpu, memory, affinity, taints</i>"]
+        B4["<b>volume node affinity conflict</b><br/>pod is unschedulable FOREVER"]
+        B1 --> B2 --> B3 --> B4
+    end
+    subgraph GOOD["volumeBindingMode: WaitForFirstConsumer"]
+        G1["PVC created — stays Pending"]
+        G2["pod created; scheduler picks NODE B"]
+        G3["volume provisioned on NODE B"]
+        G4["<b>storage and scheduling agree<br/>by construction</b>"]
+        G1 --> G2 --> G3 --> G4
+    end
+    style B4 fill:#3b1f1f,stroke:#d32f2f,color:#fff
+    style G4 fill:#1f3b2b,stroke:#66bb6a,color:#fff

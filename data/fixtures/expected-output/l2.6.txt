@@ -1,0 +1,5 @@
+#### L2.6 step 5 — the proof, from a real load run
+requests: 232   ok: 232   FAILED: 0
+availability: 100.0%   (SLO 99.5%)
+p50 162.5 ms   p95 238.9 ms   p99 267.3 ms   (SLO 300 ms)
+status codes: {'201': 186, '409': 46}

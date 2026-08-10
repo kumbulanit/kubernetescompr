@@ -1,0 +1,18 @@
+%% D1 M1.9 — The 6-step triage loop. Used 8 more times this week.
+graph TD
+    S["<b>Symptom</b><br/>merchant reports failure"]
+    S1["<b>1. DESIRED state?</b><br/>kubectl get &lt;kind&gt; -o yaml"]
+    S2["<b>2. ACTUAL state?</b><br/>kubectl get pods -o wide"]
+    S3["<b>3. What does the CLUSTER say?</b><br/>kubectl describe / get events"]
+    S4["<b>4. What does the APP say?</b><br/>kubectl logs --previous"]
+    S5["<b>5. Reproduce from INSIDE</b><br/>kubectl exec / debug / port-forward"]
+    S6["<b>6. What CHANGED?</b><br/>rollout history / git diff"]
+    FIX["<b>Fix</b>"]
+    VER["<b>VERIFY</b><br/><i>a fix is not a fix<br/>until you prove it</i>"]
+    PREV["<b>What would have<br/>caught this first?</b>"]
+
+    S --> S1 --> S2 --> S3 --> S4 --> S5 --> S6 --> FIX --> VER --> PREV
+    S3 -.->|"container never started —<br/>logs are useless"| S6
+    style S3 fill:#1f2b3b,stroke:#42a5f5,color:#fff
+    style VER fill:#1f3b2b,stroke:#66bb6a,color:#fff
+    style PREV fill:#2b1f3b,stroke:#ab47bc,color:#fff

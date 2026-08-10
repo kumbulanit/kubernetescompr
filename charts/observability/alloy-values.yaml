@@ -1,0 +1,126 @@
+# ==============================================================================
+# Grafana Alloy — the log shipper
+# ==============================================================================
+# Alloy runs as a DaemonSet because logs live on the NODE, in
+# /var/log/pods/<namespace>_<pod>_<uid>/<container>/*.log. One collector per
+# node is the only topology that makes sense — this is the textbook DaemonSet
+# use case and worth calling back to Day 2.
+#
+# It needs a hostPath mount and therefore cannot satisfy the `restricted` Pod
+# Security standard. axispay-observability is labelled `privileged` for
+# exactly this reason, and that exception is written down in
+# manifests/day5/security/01-pod-security.yaml rather than discovered later.
+#
+#   helm upgrade --install alloy grafana/alloy \
+#     -n axispay-observability -f charts/observability/alloy-values.yaml
+# ==============================================================================
+
+controller:
+  type: daemonset
+
+alloy:
+  # The config is River, not YAML. It is a pipeline: discover -> relabel ->
+  # scrape -> write. Read it top to bottom.
+  configMap:
+    content: |-
+      // ---- discovery -----------------------------------------------------
+      discovery.kubernetes "pods" {
+        role = "pod"
+      }
+
+      // Keep only AxisPay namespaces. Without this, Alloy ships kube-system,
+      // Calico and the ingress controller too — several times the volume, for
+      // logs nobody in this course will read.
+      discovery.relabel "axispay" {
+        targets = discovery.kubernetes.pods.targets
+
+        rule {
+          source_labels = ["__meta_kubernetes_namespace"]
+          regex         = "axispay-.*"
+          action        = "keep"
+        }
+
+        // Promote a small, FIXED set of fields to labels. These are the
+        // dimensions you slice by. Anything with unbounded values —
+        // correlation_id, payment_id, merchant_id — stays in the log body and
+        // is queried with `| json`. Putting them here would create one Loki
+        // stream per value and take the cluster down.
+        rule {
+          source_labels = ["__meta_kubernetes_namespace"]
+          target_label  = "namespace"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_pod_label_app_kubernetes_io_name"]
+          target_label  = "service"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_pod_name"]
+          target_label  = "pod"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_pod_container_name"]
+          target_label  = "container"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_node_name"]
+          target_label  = "node"
+        }
+      }
+
+      // ---- read the files -------------------------------------------------
+      loki.source.kubernetes "pods" {
+        targets    = discovery.relabel.axispay.output
+        forward_to = [loki.process.axispay.receiver]
+      }
+
+      // ---- parse ----------------------------------------------------------
+      loki.process "axispay" {
+        forward_to = [loki.write.default.receiver]
+
+        // The services emit one JSON object per line. Parsing `level` here
+        // makes `| level="error"` a label lookup instead of a full scan.
+        stage.json {
+          expressions = {
+            level = "level",
+            ts    = "ts",
+          }
+        }
+
+        stage.labels {
+          values = { level = "" }
+        }
+
+        // Use the application's own timestamp, not the moment Alloy read the
+        // file. Otherwise every log during a backlog appears to have happened
+        // at the same instant, and ordering across services becomes fiction.
+        stage.timestamp {
+          source = "ts"
+          format = "RFC3339"
+        }
+      }
+
+      // ---- ship -----------------------------------------------------------
+      loki.write "default" {
+        endpoint {
+          url = "http://loki-gateway.axispay-observability.svc.cluster.local/loki/api/v1/push"
+        }
+      }
+
+  resources:
+    requests: { cpu: 50m, memory: 96Mi }
+    limits:   { cpu: 300m, memory: 256Mi }
+
+  # Reading /var/log/pods requires root and a hostPath. This is the exception
+  # the `privileged` namespace label exists for.
+  securityContext:
+    runAsUser: 0
+    readOnlyRootFilesystem: true
+
+  mounts:
+    varlog: true
+    dockercontainers: true
+
+serviceMonitor:
+  enabled: true
+  additionalLabels:
+    release: kube-prometheus-stack

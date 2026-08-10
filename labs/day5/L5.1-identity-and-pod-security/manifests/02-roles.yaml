@@ -1,0 +1,159 @@
+# ==============================================================================
+# Roles and ClusterRoles — least privilege
+# ==============================================================================
+# RBAC IS PURELY ADDITIVE. There is no deny rule, exactly as with NetworkPolicy.
+# A subject can do the union of everything its bindings grant, and nothing else.
+# You cannot subtract a permission — you can only avoid granting it.
+#
+# Role vs ClusterRole:
+#   Role         permissions WITHIN one namespace
+#   ClusterRole  permissions cluster-wide, OR on cluster-scoped resources
+#                (nodes, PVs, StorageClasses), OR reusable across namespaces
+#
+# RoleBinding vs ClusterRoleBinding — this is where people accidentally grant
+# far too much:
+#   RoleBinding         grants in ONE namespace. May reference a Role OR a
+#                       ClusterRole (in which case the ClusterRole's rules are
+#                       applied only within that namespace — the useful pattern).
+#   ClusterRoleBinding  grants in EVERY namespace, including ones that do not
+#                       exist yet.
+# ==============================================================================
+---
+# The auditor: read everything except Secrets. This is the shape almost every
+# organisation needs and almost every organisation gets wrong by using the
+# built-in `view` ClusterRole, which... also excludes Secrets. Good. But people
+# reach for `cluster-admin` because it is easier.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: axispay-auditor
+  labels: { app.kubernetes.io/part-of: axispay, axispay.io/day-introduced: "5" }
+  annotations:
+    axispay.io/description: >-
+      Read-only across AxisPay namespaces. Deliberately EXCLUDES secrets —
+      an auditor needs to see configuration and state, never credentials.
+rules:
+  - apiGroups: [""]
+    resources: [pods, services, configmaps, endpoints, persistentvolumeclaims,
+                events, namespaces, serviceaccounts]
+    verbs: [get, list, watch]
+  - apiGroups: [apps]
+    resources: [deployments, statefulsets, daemonsets, replicasets]
+    verbs: [get, list, watch]
+  - apiGroups: [batch]
+    resources: [jobs, cronjobs]
+    verbs: [get, list, watch]
+  - apiGroups: [networking.k8s.io]
+    resources: [ingresses, networkpolicies]
+    verbs: [get, list, watch]
+  - apiGroups: [policy]
+    resources: [poddisruptionbudgets]
+    verbs: [get, list, watch]
+  - apiGroups: [autoscaling]
+    resources: [horizontalpodautoscalers]
+    verbs: [get, list, watch]
+  - apiGroups: [rbac.authorization.k8s.io]
+    resources: [roles, rolebindings, clusterroles, clusterrolebindings]
+    verbs: [get, list, watch]
+  # NOTE: "secrets" appears NOWHERE above. That omission is the control.
+  # Also note pods/log is granted separately below — reading logs is a
+  # different privilege from listing pods, and logs can contain anything.
+  - apiGroups: [""]
+    resources: [pods/log]
+    verbs: [get, list]
+---
+# The deployer: may roll out and roll back within ONE namespace. Cannot read
+# secrets, cannot touch RBAC, cannot delete namespaces.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: axispay-deployer
+  namespace: axispay-core
+  labels: { app.kubernetes.io/part-of: axispay, axispay.io/day-introduced: "5" }
+rules:
+  - apiGroups: [apps]
+    resources: [deployments, statefulsets, daemonsets]
+    verbs: [get, list, watch, create, update, patch]
+    # NOTE: no "delete". A deployer may roll forward and roll back, but may not
+    # remove a workload — that requires a separate, deliberate grant.
+  - apiGroups: [apps]
+    resources: [deployments/scale, statefulsets/scale]
+    verbs: [get, update, patch]
+  - apiGroups: [apps]
+    resources: [replicasets]
+    verbs: [get, list, watch]
+  - apiGroups: [""]
+    resources: [pods, services, configmaps, events]
+    verbs: [get, list, watch]
+  - apiGroups: [""]
+    resources: [pods/log]
+    verbs: [get, list]
+  - apiGroups: [""]
+    resources: [pods]
+    verbs: [delete]          # so a rollout can be forced; not the workload itself
+  - apiGroups: [autoscaling]
+    resources: [horizontalpodautoscalers]
+    verbs: [get, list, watch, update, patch]
+---
+# The on-call engineer: everything the deployer can do, plus exec and
+# port-forward for debugging, plus eviction so they can drain a node.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: axispay-oncall
+  namespace: axispay-core
+  labels: { app.kubernetes.io/part-of: axispay, axispay.io/day-introduced: "5" }
+  annotations:
+    axispay.io/warning: >-
+      pods/exec is a POWERFUL grant. A user who can exec into a pod can read
+      every file it can read — including mounted Secrets — regardless of
+      whether they have `get secrets`. Treat it as equivalent to secret access
+      and audit it accordingly.
+rules:
+  - apiGroups: [""]
+    resources: [pods, services, configmaps, events, endpoints]
+    verbs: [get, list, watch]
+  - apiGroups: [""]
+    resources: [pods/log, pods/status]
+    verbs: [get, list]
+  - apiGroups: [""]
+    resources: [pods/exec, pods/portforward]
+    verbs: [create]
+  - apiGroups: [""]
+    resources: [pods/eviction]
+    verbs: [create]
+  - apiGroups: [apps]
+    resources: [deployments, statefulsets, replicasets]
+    verbs: [get, list, watch, patch]
+---
+# Prometheus: the first REAL-WORLD RBAC object students meet. It needs to
+# discover targets by calling the API server, which is why its token IS mounted.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: axispay-prometheus
+  labels: { app.kubernetes.io/part-of: axispay, axispay.io/day-introduced: "5" }
+rules:
+  - apiGroups: [""]
+    resources: [nodes, nodes/metrics, services, endpoints, pods]
+    verbs: [get, list, watch]
+  - apiGroups: [""]
+    resources: [configmaps]
+    verbs: [get]
+  - apiGroups: [networking.k8s.io]
+    resources: [ingresses]
+    verbs: [get, list, watch]
+  - nonResourceURLs: ["/metrics", "/metrics/cadvisor"]
+    verbs: [get]
+---
+# node-agent: read nodes, and nothing else. Cluster-scoped because Node is a
+# cluster-scoped resource — a Role cannot grant access to it at all.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: axispay-node-reader
+  labels: { app.kubernetes.io/part-of: axispay, axispay.io/day-introduced: "5" }
+rules:
+  - apiGroups: [""]
+    resources: [nodes]
+    verbs: [get, list, watch]

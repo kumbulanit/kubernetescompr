@@ -1,0 +1,20 @@
+%% D2 M2.3 — learn probes by CONSEQUENCE, not definition
+graph TB
+    K["kubelet"]
+    S["<b>startupProbe</b><br/>/startupz<br/><i>has init finished?</i>"]
+    L["<b>livenessProbe</b><br/>/healthz<br/><i>is this process<br/>unrecoverable?</i>"]
+    R["<b>readinessProbe</b><br/>/readyz<br/><i>can THIS pod<br/>serve right now?</i>"]
+    SW["Keep waiting.<br/>Liveness SUSPENDED."]
+    LR["<b>RESTART the container</b><br/><i>destroys in-flight work</i>"]
+    RE["<b>Remove from Endpoints</b><br/><i>traffic stops · pod keeps running</i>"]
+    NEVER["NEVER check<br/>a dependency here"]
+    ALWAYS["SHOULD check<br/>dependencies here"]
+    K --> S --> SW
+    K --> L --> LR
+    K --> R --> RE
+    L -.-> NEVER
+    R -.-> ALWAYS
+    style LR fill:#3b1f1f,stroke:#d32f2f,color:#fff
+    style RE fill:#1f3b2b,stroke:#66bb6a,color:#fff
+    style NEVER fill:#3b1f1f,stroke:#d32f2f,color:#fff
+    style ALWAYS fill:#1f3b2b,stroke:#66bb6a,color:#fff

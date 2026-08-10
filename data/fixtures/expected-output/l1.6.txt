@@ -1,0 +1,34 @@
+#### L1.6 task 4 — full payment, real response
+HTTP 201
+{
+  "payment_id": "pay_6633ac397928256cc24c17db",
+  "reference": "AXP-20260807-63075987",
+  "merchant_id": "MER_7QK2XD9P4A",
+  "amount_minor": 129900,
+  "currency": "ZAR",
+  "status": "captured",
+  "card_brand": "visa",
+  "card_last4": "4242",
+  "fee_minor": 2488,
+  "net_minor": 127412,
+  "description": "Order KCR-88421",
+  "risk_score": 9,
+  "acquirer": "ACQ_MERIDIAN",
+  "auth_code": "A24BBD",
+  "decline_reason": null,
+  "created_at": "2026-08-07T16:28:08.654592+00:00",
+  "updated_at": "2026-08-07T16:28:08.654592+00:00",
+  "display_amount": "R1,299.00"
+}
+
+#### L1.6 task 5 — idempotency: same key twice
+First:   HTTP 201   pay_6633ac397928256cc24c17db
+Second:  HTTP 200   pay_6633ac397928256cc24c17db   Idempotent-Replay: true
+
+#### L2.1 step 2 — fee arithmetic, Kalahari 180bps + R1.50 fixed
+  gross      129900   R1,299.00
+  variable     2338   (180 bps)
+  fixed         150
+  fee          2488
+  net        127412
+  fee + net == gross : True

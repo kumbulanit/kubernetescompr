@@ -1,0 +1,24 @@
+# Headless (clusterIP: None): a DaemonSet has no single "leader" to load
+# balance to — you almost always want to reach a SPECIFIC node's agent.
+# DNS therefore returns every pod IP rather than one virtual IP.
+# Headless Services are covered properly on Day 3 (StatefulSets) and Day 4.
+apiVersion: v1
+kind: Service
+metadata:
+  name: node-agent
+  namespace: axispay-ops
+  labels:
+    app.kubernetes.io/name: node-agent
+    app.kubernetes.io/instance: axispay
+    app.kubernetes.io/component: ops
+    app.kubernetes.io/part-of: axispay
+    axispay.io/day-introduced: "2"
+spec:
+  clusterIP: None
+  selector:
+    app.kubernetes.io/name: node-agent
+    app.kubernetes.io/instance: axispay
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http

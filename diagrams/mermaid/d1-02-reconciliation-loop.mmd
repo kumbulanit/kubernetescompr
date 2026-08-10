@@ -1,0 +1,17 @@
+%% D1 M1.3 — The reconciliation loop (THE organising idea of the whole course)
+%% Use: slide "Desired state vs actual state"
+graph LR
+    SPEC["<b>spec</b><br/>desired state<br/><i>what YOU wrote</i><br/>replicas: 3"]
+    CTRL{"<b>Controller</b><br/>observe → diff → act<br/><i>forever</i>"}
+    STATUS["<b>status</b><br/>actual state<br/><i>what IS</i><br/>readyReplicas: 2"]
+    ACT["<b>Act</b><br/>create 1 pod"]
+
+    SPEC -->|reads| CTRL
+    STATUS -->|reads| CTRL
+    CTRL -->|"spec ≠ status"| ACT
+    ACT -->|changes the world| STATUS
+    CTRL -.->|"spec = status<br/>do nothing"| CTRL
+
+    style SPEC fill:#1f2b3b,stroke:#42a5f5,color:#fff
+    style STATUS fill:#3b2f1f,stroke:#ffa726,color:#fff
+    style CTRL fill:#1f3b2b,stroke:#66bb6a,color:#fff

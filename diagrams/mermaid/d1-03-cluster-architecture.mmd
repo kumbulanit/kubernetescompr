@@ -1,0 +1,26 @@
+%% D1 M1.4 — Cluster architecture
+%% Use: slide "Every arrow points at the API server"
+graph TB
+    KCTL["kubectl / Helm / CI"]
+    subgraph CP["CONTROL PLANE"]
+        API["<b>kube-apiserver</b><br/>authN → authZ → admission<br/><i>the only door</i>"]
+        ETCD[("<b>etcd</b><br/>the only source of truth<br/><i>back this up</i>")]
+        SCHED["<b>kube-scheduler</b><br/>filter → score → bind<br/><i>decides WHERE</i>"]
+        CM["<b>controller-manager</b><br/>ReplicaSet · Deployment<br/>Endpoint · Job · Node"]
+    end
+    subgraph NODE["EVERY NODE"]
+        KUBELET["<b>kubelet</b><br/>makes pods real<br/>runs probes"]
+        PROXY["<b>kube-proxy</b><br/>programs Service routing"]
+        CRI["<b>containerd</b> (CRI)"]
+        CNI["<b>Calico</b> (CNI)"]
+    end
+    KCTL -->|HTTPS| API
+    API <--> ETCD
+    SCHED -->|watch + bind| API
+    CM -->|watch + reconcile| API
+    KUBELET -->|"watch pods for MY node"| API
+    PROXY -->|watch Services| API
+    KUBELET --> CRI
+    CRI --> CNI
+    style API fill:#1f2b3b,stroke:#42a5f5,color:#fff
+    style ETCD fill:#3b1f2b,stroke:#ec407a,color:#fff

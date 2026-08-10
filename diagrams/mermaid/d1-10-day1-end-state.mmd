@@ -1,0 +1,19 @@
+%% D1 — what the platform looks like at 17:00 on Monday
+graph TB
+    subgraph E["axispay-edge"]
+        GW["edge-gateway<br/>Deployment · 2 replicas<br/>Service ClusterIP"]
+        AU["auth-service<br/>Deployment · 2 replicas<br/>Service ClusterIP"]
+    end
+    subgraph C["axispay-core"]
+        PS["payment-service<br/>Deployment · 3 replicas<br/>Service ClusterIP"]
+        MS["merchant-service<br/>Deployment · 2 replicas<br/>Service ClusterIP"]
+    end
+    subgraph A["axispay-async"]
+        EMPTY["<i>empty — Day 2</i>"]
+    end
+    GW --> AU
+    GW --> PS
+    PS --> MS
+    style E fill:#2b3b1f,stroke:#689f38,color:#fff
+    style C fill:#3b1f2b,stroke:#c2185b,color:#fff
+    style A fill:#2b2b2b,stroke:#666,color:#888

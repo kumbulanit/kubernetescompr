@@ -1,0 +1,30 @@
+%% D3 — platform at 17:00 Wednesday
+graph TB
+    subgraph E["axispay-edge"]
+        GW[edge-gateway]
+        AU["auth-service<br/><i>JWT key from Secret</i>"]
+    end
+    subgraph C["axispay-core — config + secrets externalised"]
+        PS["payment-service<br/><i>init: wait-for-postgres</i>"]
+        MS[merchant-service]
+        FS["fraud-service<br/><i>velocity now in Redis</i>"]
+        RS[routing-service]
+    end
+    subgraph DA["axispay-data — the vault"]
+        PG[("PostgreSQL 17<br/>5,000 payments<br/>ledger balances to 0")]
+        RD[("Redis 7.4<br/>shared counters")]
+        MQ[["RabbitMQ 4"]]
+    end
+    CM["ConfigMaps"]
+    SEC["Secrets"]
+    GW --> PS
+    PS --> MS
+    PS --> FS
+    PS --> RS
+    PS --> PG
+    FS --> RD
+    CM -.-> C
+    SEC -.-> C
+    SEC -.-> DA
+    style DA fill:#1f2a3b,stroke:#1976d2,color:#fff
+    style C fill:#3b1f2b,stroke:#c2185b,color:#fff

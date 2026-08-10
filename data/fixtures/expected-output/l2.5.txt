@@ -1,0 +1,5 @@
+#### L2.5 task 3 — recon-worker Job output (real)
+{"service": "recon-worker", "pod": "recon-worker-x7k2p", "node": "axispay-m02", "msg": "reconciliation started", "mode": "normal", "target": "http://127.0.0.1:9083"}
+{"service": "recon-worker", "pod": "recon-worker-x7k2p", "node": "axispay-m02", "msg": "currency position", "currency": "ZAR", "count": 1, "gross_minor": 129900, "fees_minor": 2488, "net_minor": 127412, "balanced": true}
+{"service": "recon-worker", "pod": "recon-worker-x7k2p", "node": "axispay-m02", "msg": "reconciliation complete", "total_payments": 1, "currencies": 1, "breaks": 0, "duration_seconds": 0.06}
+exit code: 0

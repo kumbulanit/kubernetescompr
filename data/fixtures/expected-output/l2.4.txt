@@ -1,0 +1,12 @@
+#### L2.4 challenge C1 — the in-memory velocity bug, measured
+12 rapid attempts on one card:
+  scores:     [22, 22, 30, 30, 44, 44, 44, 44, 67, 67, 67, 67]
+  decisions:  ['approve', 'approve', 'approve', 'approve', 'approve', 'approve', 'approve', 'approve', 'review', 'review', 'review', 'review']
+
+  velocity endpoint: 12 attempts in 300s
+  counted_by_pod:    fraud-service-6d4b9f7c8-f8j3k
+  warning:           in-memory per-pod counters — see Day 3 for the Redis fix
+
+  -> with N replicas each pod sees ~1/N of traffic, so a rule of
+     'more than 8 in 5 min' effectively fires at 8xN. The control
+     silently weakens as you scale. Day 3 fixes it with Redis.

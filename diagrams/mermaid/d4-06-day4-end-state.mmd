@@ -1,0 +1,43 @@
+%% D4 — platform at 17:00 Thursday
+graph TB
+    NET["Merchant systems"]
+    ING["Ingress + TLS<br/>api.axispay.local<br/>portal.axispay.local"]
+    subgraph E["axispay-edge — DMZ · default-deny"]
+        GW[edge-gateway]
+        AU[auth-service]
+    end
+    subgraph C["axispay-core — CDE · default-deny · anti-affinity · PDB"]
+        PS[payment-service]
+        MS[merchant-service]
+        FS[fraud-service]
+        RS[routing-service]
+        LS[ledger-service]
+        CS[customer-service]
+    end
+    subgraph A["axispay-async — default-deny"]
+        ST[settlement]
+        NT[notification]
+        AD[audit]
+        RP[reporting]
+    end
+    subgraph DA["axispay-data — the vault"]
+        PG[(PostgreSQL)]
+        RD[(Redis)]
+        MQ[[RabbitMQ]]
+    end
+    NET --> ING
+    ING --> GW
+    ING --> RP
+    GW --> AU
+    GW --> PS
+    PS --> MS
+    PS --> FS
+    PS --> RS
+    PS --> LS
+    PS --> CS
+    PS --> DA
+    A --> DA
+    GW -.->|"BLOCKED"| DA
+    style DA fill:#1f2a3b,stroke:#1976d2,color:#fff
+    style C fill:#3b1f2b,stroke:#c2185b,color:#fff
+    style E fill:#2b3b1f,stroke:#689f38,color:#fff

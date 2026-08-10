@@ -1,0 +1,59 @@
+# ==============================================================================
+# SLIM — the classroom fallback for a constrained laptop (Profile B)
+# ==============================================================================
+# Use when `kubectl get pods -A` shows Pending pods with "Insufficient cpu"
+# and the room cannot proceed:
+#
+#   helm upgrade axispay ./charts/axispay -f charts/axispay/values-slim.yaml
+#
+# What you LOSE by using it, stated plainly so nobody discovers it mid-lab:
+#   - the reporting labs (reporting-service is off)
+#   - the notification fan-out demo (notification-service is off)
+#   - the nightly reconciliation demo (recon-worker is off)
+# The payment path itself — gateway, auth, merchant, payment, fraud, routing,
+# ledger — stays complete, so every core lab still runs.
+# ==============================================================================
+global:
+  environment: training-slim
+
+services:
+  edge-gateway:      { replicas: 1, resources: { requests: { cpu: 25m, memory: 48Mi }, limits: { cpu: 200m, memory: 128Mi } } }
+  auth-service:      { replicas: 1, resources: { requests: { cpu: 25m, memory: 48Mi }, limits: { cpu: 200m, memory: 128Mi } } }
+  payment-service:   { replicas: 1, antiAffinity: none, hpa: { enabled: false, minReplicas: 1, maxReplicas: 3, targetCPU: 80 },
+                       resources: { requests: { cpu: 50m, memory: 64Mi }, limits: { cpu: 300m, memory: 192Mi } } }
+  merchant-service:  { replicas: 1, resources: { requests: { cpu: 25m, memory: 48Mi }, limits: { cpu: 200m, memory: 128Mi } } }
+  fraud-service:     { replicas: 1, antiAffinity: none, hpa: { enabled: false, minReplicas: 1, maxReplicas: 3, targetCPU: 80 },
+                       resources: { requests: { cpu: 50m, memory: 48Mi }, limits: { cpu: 300m, memory: 128Mi } } }
+  routing-service:   { replicas: 1, resources: { requests: { cpu: 25m, memory: 48Mi }, limits: { cpu: 200m, memory: 128Mi } } }
+  ledger-service:    { replicas: 1, resources: { requests: { cpu: 25m, memory: 48Mi }, limits: { cpu: 200m, memory: 128Mi } } }
+  customer-service:  { replicas: 1, resources: { requests: { cpu: 25m, memory: 48Mi }, limits: { cpu: 200m, memory: 128Mi } } }
+  settlement-service: { enabled: false, zone: async, replicas: 1, resources: {} }
+  notification-service: { enabled: false, zone: async, replicas: 1, resources: {} }
+  audit-service:     { replicas: 1, resources: { requests: { cpu: 25m, memory: 48Mi }, limits: { cpu: 200m, memory: 128Mi } } }
+  reporting-service: { enabled: false, zone: async, replicas: 1, resources: {} }
+
+daemonsets:
+  node-agent:
+    enabled: false
+cronjobs:
+  settlement-cron:
+    enabled: false
+    zone: async
+    schedule: "0 23 * * *"
+    timeZone: "Africa/Johannesburg"
+    concurrencyPolicy: Forbid
+    backoffLimit: 3
+    startingDeadlineSeconds: 300
+    successfulJobsHistoryLimit: 1
+    failedJobsHistoryLimit: 1
+    resources: {}
+
+podDisruptionBudget:
+  enabled: false
+observability:
+  enabled: false
+loadgen:
+  enabled: false
+strategy:
+  maxUnavailable: 1
+  maxSurge: 1

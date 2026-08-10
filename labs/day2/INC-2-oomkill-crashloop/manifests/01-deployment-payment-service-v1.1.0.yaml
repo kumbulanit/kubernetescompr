@@ -1,0 +1,110 @@
+# ==============================================================================
+# payment-service v1.1.0 — the L2.6 rolling-update target
+# ==============================================================================
+# This is a REAL release, not a version-number bump. v1.1.0 adds fraud scoring
+# and acquirer routing to the payment path:
+#
+#     v1.0.0   gateway -> payment -> merchant
+#     v1.1.0   gateway -> payment -> merchant -> fraud -> routing -> acquirer
+#
+# It changes the image AND the configuration together, which is what a real
+# release usually does. It also adds two new CRITICAL readiness dependencies,
+# so a botched rollout has somewhere realistic to go wrong.
+#
+# Roll out:   kubectl apply -f manifests/day2/rollout/
+# Watch:      kubectl rollout status deployment/payment-service -n axispay-core
+# Undo:       kubectl rollout undo deployment/payment-service -n axispay-core
+# ==============================================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: payment-service
+  namespace: axispay-core
+  labels: &labels
+    app.kubernetes.io/name: payment-service
+    app.kubernetes.io/instance: axispay
+    app.kubernetes.io/version: "1.1.0"
+    app.kubernetes.io/component: core
+    app.kubernetes.io/part-of: axispay
+    app.kubernetes.io/managed-by: kubectl
+    axispay.io/zone: core
+    axispay.io/day-introduced: "1"
+  annotations:
+    kubernetes.io/change-cause: "v1.1.0 — add fraud scoring and acquirer routing to the payment path"
+spec:
+  replicas: 3
+  revisionHistoryLimit: 5
+  # progressDeadlineSeconds: if the rollout has not progressed in 5 minutes,
+  # the Deployment is marked failed. Without this a broken release sits
+  # "in progress" forever and no CI pipeline ever fails.
+  progressDeadlineSeconds: 300
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0     # capacity NEVER drops below 3 during the release
+      maxSurge: 1           # at most 4 pods exist at any moment
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: payment-service
+      app.kubernetes.io/instance: axispay
+  template:
+    metadata:
+      labels: *labels
+    spec:
+      terminationGracePeriodSeconds: 45
+      containers:
+        - name: payment-service
+          image: axispay/payment-service:1.1.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+          resources:
+            requests: { cpu: "100m", memory: "96Mi" }
+            limits:   { cpu: "500m", memory: "256Mi" }
+          startupProbe:
+            httpGet: { path: /startupz, port: http }
+            periodSeconds: 2
+            failureThreshold: 30
+          livenessProbe:
+            httpGet: { path: /healthz, port: http }
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          readinessProbe:
+            # The readiness gate for the whole rollout. A new pod joins the
+            # Service only once merchant, fraud AND routing are all reachable
+            # from it. If v1.1.0 cannot reach fraud-service, the rollout stalls
+            # here with the old pods still serving — which is the correct
+            # failure mode and the entire reason maxUnavailable is 0.
+            httpGet: { path: /readyz, port: http }
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 2
+          lifecycle:
+            preStop:
+              exec:
+                command: ["sh","-c","sleep 8"]
+          env:
+            - name: ENVIRONMENT
+              value: "training"
+            - name: LOG_LEVEL
+              value: "info"
+            - name: SERVICE_VERSION
+              value: "1.1.0"
+            - name: ENABLE_RISK_ROUTING       # <-- the feature flag v1.1.0 turns on
+              value: "true"
+            - name: MERCHANT_SERVICE_URL
+              value: "http://merchant-service.axispay-core.svc.cluster.local:8080"
+            - name: FRAUD_SERVICE_URL
+              value: "http://fraud-service.axispay-core.svc.cluster.local:8080"
+            - name: ROUTING_SERVICE_URL
+              value: "http://routing-service.axispay-core.svc.cluster.local:8080"
+            - name: POD_NAME
+              valueFrom: { fieldRef: { fieldPath: metadata.name } }
+            - name: POD_IP
+              valueFrom: { fieldRef: { fieldPath: status.podIP } }
+            - name: NODE_NAME
+              valueFrom: { fieldRef: { fieldPath: spec.nodeName } }
+            - name: NAMESPACE
+              valueFrom: { fieldRef: { fieldPath: metadata.namespace } }

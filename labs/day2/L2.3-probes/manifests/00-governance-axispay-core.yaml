@@ -1,0 +1,90 @@
+# ==============================================================================
+# Namespace governance for axispay-core
+# ==============================================================================
+# Per-pod requests and limits are the developer's concern. THESE are the
+# platform team's: they stop one namespace starving another, and they stop a
+# pod with no resources at all from being admitted.
+#
+# In L2.2 you deliberately submit an oversized Deployment and read the
+# rejection message. Reading that message correctly is the skill.
+# ==============================================================================
+---
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: axispay-core-quota
+  namespace: axispay-core
+  labels:
+    app.kubernetes.io/part-of: axispay
+    app.kubernetes.io/name: axispay-core-quota
+    axispay.io/day-introduced: "2"
+spec:
+  hard:
+    # ---- REQUESTS: must fit real capacity -------------------------------
+    # The scheduler reserves requests, so the sum of requests can never exceed
+    # what the cluster actually has. This is the number that constrains you.
+    #
+    # Sized so that BOTH HPAs can reach maxReplicas:
+    #   payment-service  100m x 8 = 800m,  96Mi x 8 =  768Mi
+    #   fraud-service    150m x 6 = 900m,  80Mi x 6 =  480Mi
+    #   merchant-service  50m x 2 = 100m,  64Mi x 2 =  128Mi
+    #   routing-service   60m x 2 = 120m,  72Mi x 2 =  144Mi
+    #                            = 1920m           = 1520Mi
+    requests.cpu: "2"
+    requests.memory: 2Gi
+    # ---- LIMITS: deliberately oversubscribed ----------------------------
+    # Limits are a ceiling the kernel enforces per container, not a reservation.
+    # It is normal and correct for the sum of limits to exceed cluster capacity
+    # — that is what Burstable QoS is for: a pod may burst into headroom its
+    # neighbours are not using.
+    #
+    # But the quota still has to allow the HPA to reach maxReplicas, or
+    # autoscaling silently stops partway up with pods rejected by quota, and
+    # the symptom (FailedCreate on the ReplicaSet) looks nothing like the cause.
+    #   payment-service  500m x 8 = 4000m, 256Mi x 8 = 2048Mi
+    #   fraud-service    600m x 6 = 3600m, 192Mi x 6 = 1152Mi
+    #   merchant-service 250m x 2 =  500m, 160Mi x 2 =  320Mi
+    #   routing-service  300m x 2 =  600m, 192Mi x 2 =  384Mi
+    #                             = 8700m           = 3904Mi
+    limits.cpu: "9"
+    limits.memory: 5Gi
+    # Object counts stop a runaway controller or a CI loop filling the cluster.
+    pods: "40"
+    services: "15"
+    persistentvolumeclaims: "8"
+    count/deployments.apps: "12"
+---
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: axispay-core-limits
+  namespace: axispay-core
+  labels:
+    app.kubernetes.io/part-of: axispay
+    app.kubernetes.io/name: axispay-core-limits
+    axispay.io/day-introduced: "2"
+spec:
+  limits:
+    - type: Container
+      # Applied when a container specifies NOTHING. This is what makes a
+      # ResourceQuota enforceable: without a default, a pod with no requests
+      # would be admitted and the quota could never be computed.
+      default:
+        cpu: "300m"
+        memory: 192Mi
+      defaultRequest:
+        cpu: "50m"
+        memory: 64Mi
+      # Guard rails. A single container may not request more than this.
+      max:
+        cpu: "1"
+        memory: 512Mi
+      min:
+        cpu: "10m"
+        memory: 32Mi
+      # limit / request may not exceed this ratio. Stops someone requesting
+      # 10m and limiting 2000m, which schedules everywhere and then throttles
+      # or evicts unpredictably.
+      maxLimitRequestRatio:
+        cpu: "10"
+        memory: "4"

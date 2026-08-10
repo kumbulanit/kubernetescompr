@@ -1,0 +1,24 @@
+%% D2 M2.6 — termination sequence
+sequenceDiagram
+    autonumber
+    participant API as API server
+    participant EP as endpoint controller
+    participant KP as kube-proxy (every node)
+    participant K as kubelet
+    participant APP as payment-service
+
+    API->>API: pod marked Terminating
+    par in parallel
+        API->>EP: pod is terminating
+        EP->>EP: remove from EndpointSlice
+        EP->>KP: watch fires
+        KP->>KP: reprogram iptables
+    and
+        API->>K: begin termination
+        K->>APP: run preStop  (sleep 8)
+        Note over K,APP: the pause exists so endpoint removal<br/>can propagate to EVERY node first
+        K->>APP: SIGTERM
+        APP->>APP: mark unready, finish in-flight payments
+        APP-->>K: exit 0
+    end
+    Note over K: if still alive at 45s → SIGKILL

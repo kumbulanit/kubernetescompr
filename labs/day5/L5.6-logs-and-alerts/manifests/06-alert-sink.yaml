@@ -1,0 +1,163 @@
+# ==============================================================================
+# alert-sink — the receiver at the end of every Alertmanager route
+# ==============================================================================
+# Alertmanager routing is easy to write and hard to believe. This service is
+# what makes it testable: every route in 03-alertmanager-config.yaml delivers
+# here, and the sink reports what arrived on which channel.
+#
+#   kubectl -n axispay-observability logs -f deploy/alert-sink
+#   kubectl -n axispay-observability port-forward svc/alert-sink 8080:8080
+#   curl -s localhost:8080/api/v1/routes | jq .
+#
+# In L5.4 you break payment-service, wait for AxisPayPaymentErrorRateHigh to
+# fire, and then confirm it landed on `payments` and NOT on `finance`. That
+# last assertion is the whole point — a route that matches too broadly looks
+# identical to a correct one until the wrong team gets paged at 03:00.
+#
+# In production this is Slack, PagerDuty or Opsgenie. Only the receiver URL
+# changes; the routing tree above it does not.
+# ==============================================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: alert-sink
+  namespace: axispay-observability
+  labels:
+    app.kubernetes.io/name: alert-sink
+    app.kubernetes.io/instance: axispay
+    app.kubernetes.io/component: observability
+    app.kubernetes.io/part-of: axispay
+    axispay.io/day-introduced: "5"
+spec:
+  replicas: 1
+  # One replica, deliberately. The sink keeps its alerts in memory, so two
+  # replicas would each hold half the story and every query would return a
+  # different answer depending on which pod answered. For a teaching
+  # instrument that is worse than no redundancy — and losing the sink loses
+  # nothing that matters.
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: alert-sink
+      app.kubernetes.io/instance: axispay
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: alert-sink
+        app.kubernetes.io/instance: axispay
+        app.kubernetes.io/component: observability
+        app.kubernetes.io/part-of: axispay
+    spec:
+      serviceAccountName: alert-sink
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 20
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: alert-sink
+          image: axispay/alert-sink:1.0.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          env:
+            - name: SERVICE_NAME
+              value: alert-sink
+            - name: LOG_LEVEL
+              value: info
+            - name: ENVIRONMENT
+              value: training
+            - name: POD_NAME
+              valueFrom: { fieldRef: { fieldPath: metadata.name } }
+            - name: NODE_NAME
+              valueFrom: { fieldRef: { fieldPath: spec.nodeName } }
+          resources:
+            requests: { cpu: "25m", memory: "64Mi" }
+            limits:   { cpu: "150m", memory: "192Mi" }
+          startupProbe:
+            httpGet: { path: /startupz, port: http }
+            periodSeconds: 2
+            failureThreshold: 30
+          livenessProbe:
+            httpGet: { path: /healthz, port: http }
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          readinessProbe:
+            httpGet: { path: /readyz, port: http }
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 2
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 32Mi
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: alert-sink
+  namespace: axispay-observability
+  labels:
+    app.kubernetes.io/part-of: axispay
+    axispay.io/day-introduced: "5"
+automountServiceAccountToken: false
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: alert-sink
+  namespace: axispay-observability
+  labels:
+    app.kubernetes.io/name: alert-sink
+    app.kubernetes.io/instance: axispay
+    app.kubernetes.io/part-of: axispay
+    axispay.io/day-introduced: "5"
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: alert-sink
+    app.kubernetes.io/instance: axispay
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+      protocol: TCP
+---
+# The sink is scraped like anything else. `axispay_http_requests_total` on the
+# /api/v1/alerts/{channel} route is, incidentally, a metric that counts how
+# many alerts were delivered — monitoring the monitoring.
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: axispay-observability
+  namespace: axispay-observability
+  labels:
+    app.kubernetes.io/part-of: axispay
+    axispay.io/day-introduced: "5"
+    release: kube-prometheus-stack
+spec:
+  namespaceSelector:
+    matchNames: [axispay-observability]
+  selector:
+    matchLabels:
+      app.kubernetes.io/part-of: axispay
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 30s
+      scrapeTimeout: 10s

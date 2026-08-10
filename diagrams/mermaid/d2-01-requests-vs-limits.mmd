@@ -1,0 +1,16 @@
+%% D2 M2.2 — requests schedule, limits enforce
+graph TB
+    subgraph SCHED["SCHEDULING — uses REQUESTS only"]
+        R1["Node has 2000m allocatable"]
+        R2["Already reserved: 1400m"]
+        R3["Pod requests 300m<br/>→ fits, 300m RESERVED"]
+        R1 --> R2 --> R3
+    end
+    subgraph ENFORCE["RUNTIME — uses LIMITS only"]
+        L1["CPU over limit<br/><b>THROTTLED</b><br/><i>slow · no error · no log · no event</i>"]
+        L2["Memory over limit<br/><b>OOMKILLED</b><br/><i>exit 137 · restart · very visible</i>"]
+    end
+    SCHED --> ENFORCE
+    style L1 fill:#3b2f1f,stroke:#ffa726,color:#fff
+    style L2 fill:#3b1f1f,stroke:#d32f2f,color:#fff
+    style R3 fill:#1f3b2b,stroke:#66bb6a,color:#fff
