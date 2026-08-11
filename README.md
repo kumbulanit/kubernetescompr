@@ -29,7 +29,7 @@ System Administrators · Developers · DevOps Engineers · Site Reliability Engi
 **You need:** comfort in a Linux shell · a working idea of what a container is · basic YAML · basic HTTP.
 **You do not need:** prior Kubernetes experience.
 
-Full prerequisites and a self-assessment: [`documents/reference/00-CURRICULUM.md` §4](documents/reference/00-CURRICULUM.md).
+Full prerequisites and a self-assessment: [`documents/reference/00-CURRICULUM.md` §4](platform/reference/00-CURRICULUM.md).
 
 ---
 
@@ -93,9 +93,9 @@ make inventory   # the numbers above
 
 ---
 
-> **Students start here:** [`labs/GETTING-STARTED.md`](labs/GETTING-STARTED.md) — installs
+> **Students start here:** [`labs/GETTING-STARTED.md`](days/GETTING-STARTED.md) — installs
 > everything on Ubuntu, creates the cluster, and explains how the practicals work.
-> Then [`labs/day1/`](labs/day1/).
+> Then [`labs/day1/`](days/day1/labs/).
 
 ## Repository map
 
@@ -146,7 +146,7 @@ kubernetes/
   manuals from `topics/*/manual-chapter.md`, dashboards from a Python file.
 
 Full specification, including where every folder moved during the reorganisation:
-[`documents/reference/04-REPOSITORY-STRUCTURE.md`](documents/reference/04-REPOSITORY-STRUCTURE.md).
+[`documents/reference/04-REPOSITORY-STRUCTURE.md`](platform/reference/04-REPOSITORY-STRUCTURE.md).
 
 ---
 
@@ -154,13 +154,13 @@ Full specification, including where every folder moved during the reorganisation
 
 | You are… | Read |
 |---|---|
-| **An instructor** preparing to deliver | [`documents/reference/08-COURSE-COMPLETION-CHECKLIST.md`](documents/reference/08-COURSE-COMPLETION-CHECKLIST.md) → [`documents/instructor//`](documents/instructor//) → [`documents/reference/00-CURRICULUM.md`](documents/reference/00-CURRICULUM.md) |
-| **A student** starting the course | [`documents/reference/03-LAB-ROADMAP.md`](documents/reference/03-LAB-ROADMAP.md) → [`labs/GETTING-STARTED.md`](labs/GETTING-STARTED.md) |
-| **A curriculum reviewer** | [`documents/reference/00-CURRICULUM.md`](documents/reference/00-CURRICULUM.md) → [`documents/reference/02-DEPENDENCY-MAP.md`](documents/reference/02-DEPENDENCY-MAP.md) → [`documents/reference/05-TRACEABILITY.md`](documents/reference/05-TRACEABILITY.md) |
-| **An architect** evaluating the platform | [`documents/reference/01-ARCHITECTURE.md`](documents/reference/01-ARCHITECTURE.md) → [`charts/README.md`](charts/README.md) |
-| **Running the capstone** | [`documents/instructor/capstone-run-book.md`](documents/instructor/capstone-run-book.md) |
-| **Looking something up** | [`documents/reference/07-COMMAND-REFERENCE.md`](documents/reference/07-COMMAND-REFERENCE.md) · [`documents/reference/06-GLOSSARY.md`](documents/reference/06-GLOSSARY.md) |
-| **Self-studying** | [`documents/reference/03-LAB-ROADMAP.md`](documents/reference/03-LAB-ROADMAP.md), then work the labs in order |
+| **An instructor** preparing to deliver | [`documents/reference/08-COURSE-COMPLETION-CHECKLIST.md`](platform/reference/08-COURSE-COMPLETION-CHECKLIST.md) → [`documents/instructor//`](documents/instructor/) → [`documents/reference/00-CURRICULUM.md`](platform/reference/00-CURRICULUM.md) |
+| **A student** starting the course | [`documents/reference/03-LAB-ROADMAP.md`](platform/reference/03-LAB-ROADMAP.md) → [`labs/GETTING-STARTED.md`](days/GETTING-STARTED.md) |
+| **A curriculum reviewer** | [`documents/reference/00-CURRICULUM.md`](platform/reference/00-CURRICULUM.md) → [`documents/reference/02-DEPENDENCY-MAP.md`](platform/reference/02-DEPENDENCY-MAP.md) → [`documents/reference/05-TRACEABILITY.md`](platform/reference/05-TRACEABILITY.md) |
+| **An architect** evaluating the platform | [`documents/reference/01-ARCHITECTURE.md`](platform/reference/01-ARCHITECTURE.md) → [`charts/README.md`](platform/charts/README.md) |
+| **Running the capstone** | [`documents/instructor/capstone-run-book.md`](capstone/run-book.md) |
+| **Looking something up** | [`documents/reference/07-COMMAND-REFERENCE.md`](platform/reference/07-COMMAND-REFERENCE.md) · [`documents/reference/06-GLOSSARY.md`](platform/reference/06-GLOSSARY.md) |
+| **Self-studying** | [`documents/reference/03-LAB-ROADMAP.md`](platform/reference/03-LAB-ROADMAP.md), then work the labs in order |
 
 ---
 
