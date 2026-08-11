@@ -4,11 +4,11 @@ Three tickets, handed out during phase 3 of the capstone. They contain **symptom
 
 | Ticket | Severity | Injected at | Inject with |
 |---|---|---|---|
-| [`INC-5-ticket.md`](INC-5-ticket.md) | SEV-2 | 00:40 | `scripts/incidents/inject-INC-5.sh` |
-| [`INC-6-ticket.md`](INC-6-ticket.md) | SEV-2 | 00:52 | `scripts/incidents/inject-INC-6.sh` |
-| [`INC-7-ticket.md`](INC-7-ticket.md) | SEV-1 | 01:04 | `scripts/incidents/inject-INC-7.sh` |
+| [`INC-5-ticket.md`](./INC-5-ticket.md) | SEV-2 | 00:40 | `scripts/incidents/inject-INC-5.sh` |
+| [`INC-6-ticket.md`](./INC-6-ticket.md) | SEV-2 | 00:52 | `scripts/incidents/inject-INC-6.sh` |
+| [`INC-7-ticket.md`](./INC-7-ticket.md) | SEV-1 | 01:04 | `scripts/incidents/inject-INC-7.sh` |
 
-Causes, hints and debrief questions are in [`documents/instructor/capstone-run-book.md`](../../documents/instructor/capstone-run-book.md) — instructor only.
+Causes, hints and debrief questions are in [`documents/instructor/capstone-run-book.md`](../run-book.md) — instructor only.
 
 ## Why the tickets read like this
 

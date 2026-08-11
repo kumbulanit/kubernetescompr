@@ -7,7 +7,7 @@
 | **Format** | Individual, instructor-observed |
 | **You need first** | Day 5 finished — `make validate-day5` passes |
 | **Pass mark** | 70% |
-| **Rubric** | [`documents/instructor/capstone-rubric.md`](../documents/instructor/capstone-rubric.md) |
+| **Rubric** | [`documents/instructor/capstone-rubric.md`](./rubric.md) |
 
 <details>
 <summary><b>First time in a terminal? Open this.</b></summary>
@@ -15,7 +15,7 @@
 - Copy/paste in the Ubuntu terminal: <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>C</kbd> / <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>V</kbd> — **with Shift**.
 - <kbd>Ctrl</kbd>+<kbd>C</kbd> stops whatever is running. <kbd>↑</kbd> repeats the last command. <kbd>Tab</kbd> completes filenames.
 - Every command assumes you are in `~/kubernetes`. Check with `pwd`; fix with `cd ~/kubernetes`.
-- Full version: [`labs/GETTING-STARTED.md`](../labs/GETTING-STARTED.md).
+- Full version: [`labs/GETTING-STARTED.md`](../days/GETTING-STARTED.md).
 </details>
 
 ---
