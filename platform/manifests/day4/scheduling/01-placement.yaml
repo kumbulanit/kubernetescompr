@@ -1,6 +1,14 @@
 # ==============================================================================
 # Placement — affinity, anti-affinity and topology spread
 # ==============================================================================
+# NOTE: this file is a PATCH manifest for the existing Deployment objects. It is
+# not a standalone workload manifest and must be applied with `kubectl patch`, not
+# with `kubectl apply -f`.
+#
+# Example:
+#   kubectl patch deployment payment-service -n axispay-core --type merge \
+#     --patch-file platform/manifests/day4/scheduling/01-placement.yaml
+# ==============================================================================
 # Three replicas mean nothing if they are all on one node. Until now the
 # scheduler has spread them by luck, not by instruction.
 #
