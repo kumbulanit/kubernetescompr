@@ -18,7 +18,7 @@ Confirm on **every** machine:
 - [ ] `helm list -A` shows `axispay` deployed at 1.1.0
 - [ ] Grafana loads and both dashboards are present
 - [ ] `kubectl -n axispay-observability logs deploy/alert-sink --tail=5` responds
-- [ ] `python3 scripts/validate/simulate-netpol.py` reports 46 assertions
+- [ ] `python3 platform/admin/validate/simulate-netpol.py` reports 46 assertions
 - [ ] the 2.0.0 images are built into the Minikube runtime
 
 ```bash
@@ -56,17 +56,17 @@ Total 110 minutes. Keep to it; the pressure is part of the assessment.
 Injection commands — run these from your own machine against each student cluster, ideally without being seen:
 
 ```bash
-bash scripts/incidents/inject-INC-5.sh     # redis scaled to 0
-bash scripts/incidents/inject-INC-6.sh     # data-tier NetworkPolicy narrowed
-bash scripts/incidents/inject-INC-7.sh     # TLS certificate expired
+bash platform/admin/incidents/inject-INC-5.sh     # redis scaled to 0
+bash platform/admin/incidents/inject-INC-6.sh     # data-tier NetworkPolicy narrowed
+bash platform/admin/incidents/inject-INC-7.sh     # TLS certificate expired
 ```
 
 Escape hatches, if a student is genuinely stuck and losing the rest of the exercise:
 
 ```bash
-bash scripts/incidents/resolve-INC-5.sh
-bash scripts/incidents/resolve-INC-6.sh    # restores the CORRECT policy, does not delete it
-bash scripts/incidents/resolve-INC-7.sh
+bash platform/admin/incidents/resolve-INC-5.sh
+bash platform/admin/incidents/resolve-INC-6.sh    # restores the CORRECT policy, does not delete it
+bash platform/admin/incidents/resolve-INC-7.sh
 ```
 
 > Use an escape hatch only after the student has spent at least ten minutes and you have given two tool-level hints. Resolving early removes the assessment.
@@ -194,9 +194,9 @@ Zero. Through an upgrade, three incidents and 110 minutes under pressure, the mo
 ## Reset between cohorts
 
 ```bash
-bash scripts/incidents/resolve-INC-5.sh
-bash scripts/incidents/resolve-INC-6.sh
-bash scripts/incidents/resolve-INC-7.sh
+bash platform/admin/incidents/resolve-INC-5.sh
+bash platform/admin/incidents/resolve-INC-6.sh
+bash platform/admin/incidents/resolve-INC-7.sh
 helm rollback axispay --wait                          # back to 1.1.0
 kubectl delete job settlement-migration-2-0-0 -n axispay-data --ignore-not-found
 make validate-day5

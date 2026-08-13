@@ -45,7 +45,7 @@ Write up a one-page incident record.
 ## Step 0 — Inject
 
 ```bash
-bash scripts/incidents/inject-INC-4.sh
+bash platform/admin/incidents/inject-INC-4.sh
 ```
 
 Wait **three minutes**. The silent one takes time to become visible in the numbers.
@@ -213,7 +213,7 @@ kubectl get cm coredns -n kube-system -o jsonpath='{.data.Corefile}' | head -5
 
 A typo — `kubernets` instead of `kubernetes` — so CoreDNS cannot answer for cluster names.
 
-**Fix:** restore the Corefile and restart CoreDNS. `scripts/incidents/resolve-INC-4.sh` does it, or fix the ConfigMap by hand and `kubectl rollout restart deployment/coredns -n kube-system`.
+**Fix:** restore the Corefile and restart CoreDNS. `platform/admin/incidents/resolve-INC-4.sh` does it, or fix the ConfigMap by hand and `kubectl rollout restart deployment/coredns -n kube-system`.
 
 ### Fault C — the silent one
 
@@ -261,7 +261,7 @@ It works instantly and **removes the entire zero-trust segmentation you built in
 
 ```bash
 kubectl delete netpol tighten-fraud-ingress -n axispay-core
-python3 scripts/validate/simulate-netpol.py        # 46 assertions still hold
+python3 platform/admin/validate/simulate-netpol.py        # 46 assertions still hold
 ```
 
 ### Order
@@ -291,7 +291,7 @@ kubectl exec -n axispay-data postgres-0 -- psql -U axispay_app -d axispay -t -c 
 SELECT ROUND(100.0*SUM(CASE WHEN status IN ('captured','authorized') THEN 1 ELSE 0 END)/COUNT(*),1) AS approval_pct
   FROM payments WHERE merchant_reference = 'AXP-INC4';"
 
-python3 scripts/validate/simulate-netpol.py
+python3 platform/admin/validate/simulate-netpol.py
 make validate-day4
 ```
 
@@ -340,7 +340,7 @@ That second one would have stopped the incident from being possible. You build t
 | `simulate-netpol.py` fails | You deleted more than the one policy | `kubectl apply -f ../L4.4-networkpolicy/manifests/` |
 | Cannot reproduce | Injection did not run | Re-run, wait 3 minutes |
 
-Reset: `bash scripts/incidents/resolve-INC-4.sh`
+Reset: `bash platform/admin/incidents/resolve-INC-4.sh`
 
 ---
 

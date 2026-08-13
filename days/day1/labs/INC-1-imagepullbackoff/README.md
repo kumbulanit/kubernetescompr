@@ -54,7 +54,7 @@ If you are in a class, your instructor has already done this. **Skip to the tick
 If you are working alone, run this and then **do not read the script**:
 
 ```bash
-bash scripts/incidents/inject-INC-1.sh
+bash platform/admin/incidents/inject-INC-1.sh
 ```
 
 Wait two minutes before starting, so the symptom has time to appear. Make a cup of tea.
@@ -449,13 +449,13 @@ This is the question that turns a lab into an engineer. Reasonable answers:
 | Pods `Running` but still `0/1` | Different problem — readiness, not the image | Is `merchant-service` up? |
 | `curl` gives `502` after the fix | Gateway still holds a stale connection | Wait 10s and retry. If it persists, check the gateway's logs |
 | Everything looks fixed, validator fails | Read what it names | The validators say which artefact is missing and how to check it |
-| You cannot reproduce the fault | The injection did not run | `bash scripts/incidents/inject-INC-1.sh`, wait 2 minutes |
+| You cannot reproduce the fault | The injection did not run | `bash platform/admin/incidents/inject-INC-1.sh`, wait 2 minutes |
 
 **To reset and try again:**
 
 ```bash
-bash scripts/incidents/resolve-INC-1.sh     # instructor escape hatch
-bash scripts/incidents/inject-INC-1.sh      # break it again
+bash platform/admin/incidents/resolve-INC-1.sh     # instructor escape hatch
+bash platform/admin/incidents/inject-INC-1.sh      # break it again
 ```
 
 ---

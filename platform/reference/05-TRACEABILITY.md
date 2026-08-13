@@ -167,13 +167,13 @@ Reviewed deliberately — these are the items with a single teaching moment, and
 ## 6. Regenerating the counts in this document
 
 ```bash
-python3 scripts/validate/check-manifests.py     # manifest wiring
-python3 scripts/validate/check-helm-chart.py    # chart assertions
-python3 scripts/validate/check-promql.py        # every PromQL expression
-python3 scripts/validate/check-diagrams.py      # every Mermaid source
-python3 scripts/validate/simulate-netpol.py     # policy logic
-python3 scripts/validate/simulate-rbac.py       # RBAC grants
-bash    scripts/validate/verify-course.sh       # all of the above, plus inventory
+python3 platform/admin/validate/check-manifests.py     # manifest wiring
+python3 platform/admin/validate/check-helm-chart.py    # chart assertions
+python3 platform/admin/validate/check-promql.py        # every PromQL expression
+python3 platform/admin/validate/check-diagrams.py      # every Mermaid source
+python3 platform/admin/validate/simulate-netpol.py     # policy logic
+python3 platform/admin/validate/simulate-rbac.py       # RBAC grants
+bash    platform/admin/validate/verify-course.sh       # all of the above, plus inventory
 ```
 
 `verify-course.sh` prints the inventory this document quotes. If a number here disagrees with that script, the script is right.

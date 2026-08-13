@@ -115,7 +115,7 @@ defect and it does not show up until the second release.
 them on your cluster. But the repository also validates its own chart offline:
 
 ```bash
-python3 scripts/validate/check-helm-chart.py
+python3 platform/admin/validate/check-helm-chart.py
 ```
 
 91 assertions across twelve areas — every values file renders to parseable
@@ -128,7 +128,7 @@ DNS egress allow; the workload set matches `manifests/`; versions agree with
 `VERSIONS.env`; and the whole thing fits the classroom cluster both at rest
 and with both autoscalers at their ceiling.
 
-It runs on `scripts/validate/lib_gotemplate.py`, a ~450-line Go template
+It runs on `platform/admin/validate/lib_gotemplate.py`, a ~450-line Go template
 subset written for this repository. It is not Helm and does not pretend to be:
 every construct it does not understand raises rather than being skipped, so it
 cannot report success on a chart it failed to read. Worth ten minutes in class

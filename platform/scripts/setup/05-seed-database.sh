@@ -17,7 +17,7 @@ K() { kubectl --context="${MINIKUBE_PROFILE}" "$@"; }
 
 [[ "${1:-}" == "--regenerate" ]] && {
   echo "Regenerating seed data..."
-  python3 "$R/platform/data/seed/generate_seed.py" -o "$R/platform/data/seed/02-seed.sql"; }
+  python3 "$R/platform/admin/authoring/generate_seed.py" -o "$R/platform/data/seed/02-seed.sql"; }
 
 echo "Waiting for postgres-0 to be ready..."
 K -n "${NS_DATA}" wait --for=condition=ready pod/postgres-0 --timeout=300s

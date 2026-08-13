@@ -94,27 +94,27 @@ namespaces: ## Create all namespaces with their labels
 deploy-day1: namespaces ## Deploy the Day 1 end-state
 	$(call banner,"Deploying Day 1")
 	@$(K) apply -R -f platform/manifests/day1/
-	@bash platform/scripts/validate/checkpoint-day1.sh --wait
+	@bash platform/admin/validate/checkpoint-day1.sh --wait
 
 deploy-day2: ## Deploy the Day 2 end-state (requires Day 1)
 	$(call banner,"Deploying Day 2")
 	@$(K) apply -R -f platform/manifests/day2/
-	@bash platform/scripts/validate/checkpoint-day2.sh --wait
+	@bash platform/admin/validate/checkpoint-day2.sh --wait
 
 deploy-day3: ## Deploy the Day 3 end-state (requires Day 2)
 	$(call banner,"Deploying Day 3")
 	@$(K) apply -R -f platform/manifests/day3/
-	@bash platform/scripts/validate/checkpoint-day3.sh --wait
+	@bash platform/admin/validate/checkpoint-day3.sh --wait
 
 deploy-day4: ## Deploy the Day 4 end-state (requires Day 3)
 	$(call banner,"Deploying Day 4")
 	@$(K) apply -R -f platform/manifests/day4/
-	@bash platform/scripts/validate/checkpoint-day4.sh --wait
+	@bash platform/admin/validate/checkpoint-day4.sh --wait
 
 deploy-day5: ## Deploy the Day 5 end-state (requires Day 4)
 	$(call banner,"Deploying Day 5")
 	@$(K) apply -R -f platform/manifests/day5/
-	@bash platform/scripts/validate/checkpoint-day5.sh --wait
+	@bash platform/admin/validate/checkpoint-day5.sh --wait
 
 .PHONY: deploy-all
 deploy-all: deploy-day1 deploy-day2 deploy-day3 deploy-day4 deploy-day5 ## Deploy the entire platform
@@ -126,49 +126,49 @@ seed: ## Apply database schema and load seed data
 
 # ---- Validation
 .PHONY: validate-day1 validate-day2 validate-day3 validate-day4 validate-day5
-validate-day1: ; @bash platform/scripts/validate/checkpoint-day1.sh ## Validate the Day 1 end-state
-validate-day2: ; @bash platform/scripts/validate/checkpoint-day2.sh ## Validate the Day 2 end-state
-validate-day3: ; @bash platform/scripts/validate/checkpoint-day3.sh ## Validate the Day 3 end-state
-validate-day4: ; @bash platform/scripts/validate/checkpoint-day4.sh ## Validate the Day 4 end-state
-validate-day5: ; @bash platform/scripts/validate/checkpoint-day5.sh ## Validate the Day 5 end-state
+validate-day1: ; @bash platform/admin/validate/checkpoint-day1.sh ## Validate the Day 1 end-state
+validate-day2: ; @bash platform/admin/validate/checkpoint-day2.sh ## Validate the Day 2 end-state
+validate-day3: ; @bash platform/admin/validate/checkpoint-day3.sh ## Validate the Day 3 end-state
+validate-day4: ; @bash platform/admin/validate/checkpoint-day4.sh ## Validate the Day 4 end-state
+validate-day5: ; @bash platform/admin/validate/checkpoint-day5.sh ## Validate the Day 5 end-state
 
 .PHONY: validate-lab
 validate-lab: ## Validate one lab — make validate-lab LAB=L3.6
 	@test -n "$(LAB)" || { echo "Usage: make validate-lab LAB=L3.6"; exit 1; }
-	@bash platform/scripts/validate/validate-lab-$(LAB).sh
+	@bash platform/admin/validate/validate-lab-$(LAB).sh
 
 .PHONY: verify
 verify: ## Verify the whole course offline — no cluster required
-	@bash platform/scripts/validate/verify-course.sh
+	@bash platform/admin/validate/verify-course.sh
 
 .PHONY: inventory
 inventory: ## Count everything in the repository
-	@bash platform/scripts/validate/verify-course.sh --inventory
+	@bash platform/admin/validate/verify-course.sh --inventory
 
 .PHONY: health
 health: ## Full platform health report
-	@bash platform/scripts/validate/platform-health.sh
+	@bash platform/admin/validate/platform-health.sh
 
 .PHONY: lint
 lint: ## Lint YAML, shell, Helm and Python
 	$(call banner,"Linting")
 	@yamllint -c .yamllint platform/manifests/ platform/charts/ || true
-	@shellcheck platform/scripts/**/*.sh || true
+	@shellcheck platform/scripts/**/*.sh platform/admin/**/*.sh || true
 	@helm lint platform/charts/axispay || true
-	@python3 platform/scripts/validate/check-helm-chart.py
-	@python3 platform/scripts/validate/check-promql.py
-	@python3 platform/scripts/validate/check-diagrams.py
+	@python3 platform/admin/validate/check-helm-chart.py
+	@python3 platform/admin/validate/check-promql.py
+	@python3 platform/admin/validate/check-diagrams.py
 	@kubeconform -strict -kubernetes-version $(KUBERNETES_VERSION:v%=%) \
 		-ignore-missing-schemas -summary platform/manifests/ || true
 
 # ---- Course artefacts
 # The decks and manuals are GENERATED. Never edit a .pptx or a .pdf by hand —
-# edit platform/slides-src/day<N>/day<N>.js or days/day<N>/manual-chapter.md and
+# edit platform/admin/authoring/slides-src/src/day<N>/day<N>.js or days/day<N>/manual-chapter.md and
 # rebuild. Each artefact is written to a single home in days/day<N>/, so there
 # is nothing to keep in sync.
 
 .PHONY: slides manuals artefacts
-slides: ## Rebuild all five PowerPoint decks from platform/slides-src/
+slides: ## Rebuild all five PowerPoint decks from platform/admin/authoring/slides-src/
 	$(call banner,"Building decks")
 	@command -v node >/dev/null || { echo "node is required: https://nodejs.org"; exit 1; }
 	@node -e "require('pptxgenjs')" 2>/dev/null || { \
@@ -176,7 +176,7 @@ slides: ## Rebuild all five PowerPoint decks from platform/slides-src/
 		echo "(or set NODE_PATH to wherever it lives)"; exit 1; }
 	@mkdir -p /tmp/deck
 	@for d in 1 2 3 4 5; do \
-		( cd platform/slides-src/day$$d && node day$$d.js ) || exit 1; \
+		( cd platform/admin/authoring/slides-src/src/day$$d && node day$$d.js ) || exit 1; \
 		cp /tmp/deck/AxisPay-K8s-Day$$d.pptx days/day$$d/; \
 	done
 	@echo "  decks written to days/day<N>/"
@@ -184,7 +184,7 @@ slides: ## Rebuild all five PowerPoint decks from platform/slides-src/
 manuals: ## Rebuild all five participant manual PDFs from days/day<N>/manual-chapter.md
 	$(call banner,"Building participant manuals")
 	@for d in 1 2 3 4 5; do \
-		python3 platform/scripts/build/build_manual.py days/day$$d/manual-chapter.md \
+		python3 platform/admin/authoring/build_manual.py days/day$$d/manual-chapter.md \
 			-o days/day$$d/AxisPay-K8s-Day$$d-Participant-Manual.pdf || exit 1; \
 	done
 	@echo "  manuals written to days/day<N>/"
@@ -203,11 +203,11 @@ observability-down: ## Remove the observability stack
 	@bash platform/scripts/setup/07-install-observability.sh --uninstall
 
 dashboards: ## Regenerate the Grafana dashboard ConfigMaps
-	@python3 platform/scripts/build/build-dashboards.py
+	@python3 platform/admin/authoring/build-dashboards.py
 
 validate-promql: ## Parse every PromQL expression and check every metric name
-	@python3 platform/scripts/validate/check-promql.py
-	@python3 platform/scripts/validate/check-diagrams.py
+	@python3 platform/admin/validate/check-promql.py
+	@python3 platform/admin/validate/check-diagrams.py
 
 grafana: ## Port-forward Grafana (admin / axispay-training)
 	@echo "http://localhost:3000  admin / axispay-training"
@@ -225,12 +225,12 @@ alerts: ## Show what the alert sink has actually received
 .PHONY: incident
 incident: ## Inject an incident — make incident N=2
 	@test -n "$(N)" || { echo "Usage: make incident N=2   (1,2,3a,3b,4a,4b,4c,5,6,7)"; exit 1; }
-	@bash platform/scripts/incidents/inject-INC-$(N).sh
+	@bash platform/admin/incidents/inject-INC-$(N).sh
 
 .PHONY: resolve
 resolve: ## Resolve an incident (instructor escape hatch) — make resolve N=2
 	@test -n "$(N)" || { echo "Usage: make resolve N=2"; exit 1; }
-	@bash platform/scripts/incidents/resolve-INC-$(N).sh
+	@bash platform/admin/incidents/resolve-INC-$(N).sh
 
 # ---- Helm
 # HELM_VALUES defaults to the training values, NOT values-prod.yaml.
@@ -244,9 +244,9 @@ HELM_VALUES ?= platform/charts/axispay/values.yaml
 
 .PHONY: helm-check helm-lint helm-template helm-install helm-upgrade helm-diff helm-rollback
 helm-check: ## Validate the chart offline (no helm binary needed)
-	@python3 platform/scripts/validate/check-helm-chart.py
-	@python3 platform/scripts/validate/check-promql.py
-	@python3 platform/scripts/validate/check-diagrams.py
+	@python3 platform/admin/validate/check-helm-chart.py
+	@python3 platform/admin/validate/check-promql.py
+	@python3 platform/admin/validate/check-diagrams.py
 
 helm-lint: ## Lint the AxisPay chart against every values file
 	@for v in platform/charts/axispay/values*.yaml; do \
@@ -275,7 +275,7 @@ helm-rollback: ## Roll the release back one revision
 # ---- Capstone
 .PHONY: capstone-prep capstone-migrate capstone-validate capstone-reset
 capstone-prep: ## Pre-flight the capstone — RUN THIS THE NIGHT BEFORE
-	@bash capstone/validation/prepare-capstone.sh
+	@bash platform/admin/capstone/prepare-capstone.sh
 
 capstone-migrate: ## Apply the settlement schema migration (phase 2)
 	@$(K) apply -f capstone/manifests/
@@ -283,12 +283,12 @@ capstone-migrate: ## Apply the settlement schema migration (phase 2)
 	@$(K) -n $(NS_DATA) logs job/settlement-migration-2-0-0
 
 capstone-validate: ## Score the capstone against the nine competencies
-	@bash platform/scripts/validate/capstone-validate.sh
+	@bash platform/admin/validate/capstone-validate.sh
 
 capstone-reset: ## Reset between cohorts — resolve all incidents, roll back to 1.1.0
-	@bash platform/scripts/incidents/resolve-INC-5.sh || true
-	@bash platform/scripts/incidents/resolve-INC-6.sh || true
-	@bash platform/scripts/incidents/resolve-INC-7.sh || true
+	@bash platform/admin/incidents/resolve-INC-5.sh || true
+	@bash platform/admin/incidents/resolve-INC-6.sh || true
+	@bash platform/admin/incidents/resolve-INC-7.sh || true
 	@helm rollback axispay --wait || true
 	@$(K) delete job settlement-migration-2-0-0 -n $(NS_DATA) --ignore-not-found
-	@bash platform/scripts/validate/checkpoint-day5.sh
+	@bash platform/admin/validate/checkpoint-day5.sh

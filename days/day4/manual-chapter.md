@@ -461,7 +461,7 @@ packet -> evaluated at BOTH ends: egress at source, ingress at destination
 
 ## 7. Enterprise example
 
-A bank runs default-deny in every namespace, generated automatically at namespace creation. Policy changes require a review from the security team, and the CI pipeline runs a policy simulator against a fixed list of must-allow and must-block flows before merge. That simulator is `scripts/validate/simulate-netpol.py` in this repository.
+A bank runs default-deny in every namespace, generated automatically at namespace creation. Policy changes require a review from the security team, and the CI pipeline runs a policy simulator against a fixed list of must-allow and must-block flows before merge. That simulator is `platform/admin/validate/simulate-netpol.py` in this repository.
 
 ## 8. Real-world analogy
 
@@ -730,7 +730,7 @@ kubectl logs -n ingress-nginx -l app.kubernetes.io/component=controller --tail=2
 ## NetworkPolicy
 ```bash
 kubectl get netpol -A
-python3 scripts/validate/simulate-netpol.py     # 39 assertions
+python3 platform/admin/validate/simulate-netpol.py     # 39 assertions
 
 # test enforcement — reading YAML proves nothing
 kubectl run probe -n <ns> --rm -i --restart=Never --image=busybox:1.37 -- \
@@ -798,4 +798,4 @@ kubectl uncordon <n>
 | No log aggregation | Tracing one payment means `kubectl logs` across 15 services | L5.6 |
 | No alerts | A merchant tells you before your monitoring does — as happened all week | L5.6 |
 
-**Tonight (optional, 10 minutes):** run `python3 scripts/validate/simulate-netpol.py` and read the output. Then look at `MUST_BLOCK` and ask yourself which of those you would have thought to test.
+**Tonight (optional, 10 minutes):** run `python3 platform/admin/validate/simulate-netpol.py` and read the output. Then look at `MUST_BLOCK` and ask yourself which of those you would have thought to test.

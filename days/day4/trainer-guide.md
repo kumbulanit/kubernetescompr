@@ -8,7 +8,7 @@
 
 | When | Do |
 |---|---|
-| **Evening before** | Run `python3 scripts/validate/simulate-netpol.py` — 39/39 — so you know the shipped policy set is correct before students copy it. |
+| **Evening before** | Run `python3 platform/admin/validate/simulate-netpol.py` — 39/39 — so you know the shipped policy set is correct before students copy it. |
 | **60 min out** | **Verify Calico on every student cluster.** `kubectl get ds -n kube-system calico-node`. Without it, L4.4 applies 22 policies and enforces nothing. |
 | **45 min out** | `minikube addons enable ingress -p axispay` and confirm the controller is Running. |
 | **30 min out** | Add the hostnames to your own `/etc/hosts` and confirm `curl -k https://api.axispay.local` works from your demo machine. |
@@ -134,7 +134,7 @@ That exact temptation returns in tomorrow's capstone under more pressure, and ta
 ## 8. End-of-day checklist
 
 - [ ] `make validate-lab LAB=L4.4` passes — **gateway CANNOT reach PostgreSQL**
-- [ ] `python3 scripts/validate/simulate-netpol.py` returns 39/39
+- [ ] `python3 platform/admin/validate/simulate-netpol.py` returns 39/39
 - [ ] All six PDBs applied, none with zero allowed disruptions
 - [ ] **All nodes uncordoned** — `kubectl uncordon --all`
 - [ ] All taints removed

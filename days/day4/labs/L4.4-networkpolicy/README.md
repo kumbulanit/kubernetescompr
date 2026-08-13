@@ -252,7 +252,7 @@ A *refusal* would mean the packet reached a host that actively declined it — w
 ## Step 7 — Test the whole matrix
 
 ```bash
-python3 scripts/validate/simulate-netpol.py
+python3 platform/admin/validate/simulate-netpol.py
 ```
 
 ```

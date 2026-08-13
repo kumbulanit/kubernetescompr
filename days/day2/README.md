@@ -52,14 +52,14 @@ make validate-day2
 
 ## Diagram sources
 
-- [`d2-01-requests-vs-limits.mmd`](../../platform/diagrams/mermaid/d2-01-requests-vs-limits.mmd)
-- [`d2-02-probe-consequences.mmd`](../../platform/diagrams/mermaid/d2-02-probe-consequences.mmd)
-- [`d2-03-cascading-failure.mmd`](../../platform/diagrams/mermaid/d2-03-cascading-failure.mmd)
-- [`d2-04-hpa-loop.mmd`](../../platform/diagrams/mermaid/d2-04-hpa-loop.mmd)
-- [`d2-05-workload-types.mmd`](../../platform/diagrams/mermaid/d2-05-workload-types.mmd)
-- [`d2-06-rolling-update.mmd`](../../platform/diagrams/mermaid/d2-06-rolling-update.mmd)
-- [`d2-07-graceful-shutdown.mmd`](../../platform/diagrams/mermaid/d2-07-graceful-shutdown.mmd)
-- [`d2-08-day2-end-state.mmd`](../../platform/diagrams/mermaid/d2-08-day2-end-state.mmd)
+- [`d2-01-requests-vs-limits.mmd`](../../platform/admin/authoring/diagrams/mermaid/d2-01-requests-vs-limits.mmd)
+- [`d2-02-probe-consequences.mmd`](../../platform/admin/authoring/diagrams/mermaid/d2-02-probe-consequences.mmd)
+- [`d2-03-cascading-failure.mmd`](../../platform/admin/authoring/diagrams/mermaid/d2-03-cascading-failure.mmd)
+- [`d2-04-hpa-loop.mmd`](../../platform/admin/authoring/diagrams/mermaid/d2-04-hpa-loop.mmd)
+- [`d2-05-workload-types.mmd`](../../platform/admin/authoring/diagrams/mermaid/d2-05-workload-types.mmd)
+- [`d2-06-rolling-update.mmd`](../../platform/admin/authoring/diagrams/mermaid/d2-06-rolling-update.mmd)
+- [`d2-07-graceful-shutdown.mmd`](../../platform/admin/authoring/diagrams/mermaid/d2-07-graceful-shutdown.mmd)
+- [`d2-08-day2-end-state.mmd`](../../platform/admin/authoring/diagrams/mermaid/d2-08-day2-end-state.mmd)
 
 Rendered with `cd diagrams && ./render.sh --only d2` (needs mermaid-cli). The deck's diagrams are separate and native to PowerPoint — their source is `slides/src/day2/diagrams.js`.
 

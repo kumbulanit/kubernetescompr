@@ -27,7 +27,7 @@
 | `README.md` | This brief. |
 | `manifests/01-settlement-migration.yaml` | The settlement schema migration you run in phase 2 |
 | `scenarios/` | The three incident tickets — your instructor hands these out |
-| `validation/prepare-capstone.sh` | Instructor pre-flight, run the night before |
+| `platform/admin/capstone/prepare-capstone.sh` | Instructor pre-flight, run the night before |
 | `solutions.md` | **Do not open before the exercise.** Root causes and walkthrough |
 
 ---
@@ -145,7 +145,7 @@ Apply the triage loop. Prioritise by customer impact, not by which alert is loud
 ### Phase 4 · Recovery and validation — 20 minutes
 
 ```bash
-bash scripts/validate/capstone-validate.sh
+bash platform/admin/validate/capstone-validate.sh
 ```
 
 The script must exit 0. Additionally:

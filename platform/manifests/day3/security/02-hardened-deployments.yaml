@@ -1,7 +1,16 @@
 # ==============================================================================
 # Strategic-merge patches applying the security baseline to every app workload.
-#   kubectl apply -f manifests/day3/security/02-hardened-deployments.yaml
-# Each patch merges into the existing Deployment; nothing else is changed.
+# NOTE: this is a PATCH manifest, not a full standalone Deployment manifest.
+# It is intended to be applied with `kubectl patch` against each live Deployment,
+# not with `kubectl apply -f`.
+#
+# Examples:
+#   kubectl patch deployment edge-gateway -n axispay-edge --type merge \
+#     --patch-file platform/manifests/day3/security/02-hardened-deployments.yaml
+#
+# The object below is intentionally partial and only includes the fields that are
+# being changed in the live Deployment. That is why it cannot be used as a plain
+# `kubectl apply` file.
 # ==============================================================================
 ---
 # edge-gateway: non-root, read-only root filesystem, all capabilities dropped

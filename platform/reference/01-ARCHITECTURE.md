@@ -39,7 +39,7 @@ An engineer who can operate this can operate most enterprise systems. That is th
 
 ## 2. Service inventory
 
-Sixteen workloads plus a data tier and an observability stack. Every service is Python 3.13 + FastAPI, every service exposes REST, every service ships with seed data, and every service talks to at least two others.
+Sixteen workloads plus a data tier and an observability stack. Every service is Java 21 + Spring Boot, every service exposes REST, every service ships with seed data, and every service talks to at least two others.
 
 ### 2.1 Edge tier — namespace `axispay-edge`
 
@@ -512,8 +512,8 @@ Pinned in `VERSIONS.env` and referenced by every script, manifest and chart. Not
 | PostgreSQL | 17-alpine | |
 | Redis | 7.4-alpine | |
 | RabbitMQ | 4-management-alpine | |
-| Python | 3.13-slim | Service base image |
-| FastAPI / Uvicorn | current | Pinned in `images/_shared/requirements.txt` |
+| Java | 21 LTS | Service runtime |
+| Spring Boot / Maven | 3.4.x / 3.9.x | Application framework and build tool |
 | ingress-nginx | Minikube addon | |
 | kube-prometheus-stack | current | Day 5 |
 | Loki + Alloy | current | Day 5 |

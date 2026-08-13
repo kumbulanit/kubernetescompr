@@ -546,7 +546,7 @@ graph LR
 
 ### 9.1 Recovery points
 
-A single lab must never be able to destroy the week. Every lab ends by writing its state, and `scripts/validate/checkpoint-day<N>.sh` can rebuild any day's end-state from manifests in under four minutes.
+A single lab must never be able to destroy the week. Every lab ends by writing its state, and `platform/admin/validate/checkpoint-day<N>.sh` can rebuild any day's end-state from manifests in under four minutes.
 
 | Checkpoint | Restores | Runtime |
 |---|---|---|

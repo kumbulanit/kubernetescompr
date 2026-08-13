@@ -1,57 +1,23 @@
 # ==============================================================================
 # AxisPay — recon-worker
-# Batch reconciliation - a Job, not a server
+# Java / Spring Boot service image
 # ==============================================================================
-# Built locally into the Minikube container runtime. No registry, no push, no
-# pull-rate limits, works on a locked-down corporate network:
-#
-#     eval $(minikube -p axispay docker-env)
-#     docker build -t axispay/recon-worker:1.0.0 -f images/recon-worker/Dockerfile .
-#
-# NOTE the build context is the REPOSITORY ROOT, not this directory, because
-# the shared library lives in images/_shared and Docker cannot COPY from a
-# parent of its context.
-# ==============================================================================
+FROM maven:3.9.9-eclipse-temurin-21 AS build
+WORKDIR /workspace
+COPY platform/images/pom.xml platform/images/pom.xml
+COPY platform/images/axispay-common platform/images/axispay-common
+COPY platform/images/recon-worker platform/images/recon-worker
+RUN mvn -f platform/images/pom.xml -pl recon-worker -am -DskipTests package
 
-# ---- stage 1: dependencies ---------------------------------------------------
-FROM python:3.13-slim-bookworm AS deps
-ENV PYTHONDONTWRITEBYTECODE=1 PIP_NO_CACHE_DIR=1 PIP_DISABLE_PIP_VERSION_CHECK=1
-WORKDIR /install
-COPY images/_shared/requirements.txt .
-RUN pip install --no-cache-dir --prefix=/install/deps -r requirements.txt
+FROM eclipse-temurin:21-jre
+LABEL org.opencontainers.image.title="axispay-recon-worker"       org.opencontainers.image.description="AxisPay recon-worker (Java / Spring Boot)"       org.opencontainers.image.vendor="Axis Financial Services (fictional)"       org.opencontainers.image.version="1.0.0"       org.opencontainers.image.licenses="MIT"       axispay.io/zone="core"
 
-# ---- stage 2: runtime --------------------------------------------------------
-FROM python:3.13-slim-bookworm AS runtime
-
-LABEL org.opencontainers.image.title="axispay-recon-worker" \
-      org.opencontainers.image.description="Batch reconciliation - a Job, not a server" \
-      org.opencontainers.image.vendor="Axis Financial Services (fictional)" \
-      org.opencontainers.image.version="1.0.0" \
-      org.opencontainers.image.licenses="MIT" \
-      axispay.io/zone="async"
-
-RUN groupadd --gid 10001 axispay \
- && useradd --uid 10001 --gid 10001 --create-home --shell /usr/sbin/nologin axispay
-
-ENV PYTHONUNBUFFERED=1 \
-    PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONPATH=/app \
-    SERVICE_NAME=recon-worker \
-    SERVICE_VERSION=1.0.0 \
-    PORT=8080
-
-# Only the installed packages come across from the build stage — pip, wheels,
-# build tools and caches are left behind. Every binary absent from the final
-# image is one a compromised container cannot use.
-COPY --from=deps /install/deps /usr/local
+RUN groupadd --gid 10001 axispay   && useradd --uid 10001 --gid 10001 --create-home --shell /usr/sbin/nologin axispay
 
 WORKDIR /app
-COPY --chown=10001:10001 images/_shared/axispay_common /app/axispay_common
-COPY --chown=10001:10001 images/recon-worker/app /app/app
-
+COPY --from=build /workspace/platform/images/recon-worker/target/app.jar /app/app.jar
+RUN chown -R 10001:10001 /app
 USER 10001:10001
-
-# A Job container. It runs, prints a report and EXITS — and that exit code is
-# how Kubernetes decides whether the Job succeeded. No server, no port, and
-# deliberately no HEALTHCHECK: there is nothing long-running to check.
-ENTRYPOINT ["python3", "/app/app/main.py"]
+EXPOSE 8080
+HEALTHCHECK --interval=10s --timeout=3s --start-period=5s --retries=3   CMD curl -fsS http://127.0.0.1:8080/healthz >/dev/null || exit 1
+ENTRYPOINT ["java","-jar","/app/app.jar"]

@@ -1,6 +1,14 @@
 # ==============================================================================
 # Taints and tolerations — the OPPOSITE direction to affinity
 # ==============================================================================
+# NOTE: this file is a PATCH manifest for the existing payment-service Deployment.
+# It is not a standalone workload manifest and must be applied with `kubectl patch`,
+# not with `kubectl apply -f`.
+#
+# Example:
+#   kubectl patch deployment payment-service -n axispay-core --type merge \
+#     --patch-file platform/manifests/day4/scheduling/02-taints-tolerations.yaml
+# ==============================================================================
 #   affinity     the POD says   "I want to be near X"
 #   taint        the NODE says  "keep away unless you have a pass"
 #   toleration   the POD says   "I have the pass"

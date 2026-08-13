@@ -40,13 +40,13 @@ make resolve N=2               # instructor: escape hatch
 ### Offline — no cluster, no network
 
 ```bash
-bash    scripts/validate/verify-course.sh      # everything below, plus an inventory
-python3 scripts/validate/check-manifests.py    # manifest wiring
-python3 scripts/validate/check-helm-chart.py   # 94 chart assertions
-python3 scripts/validate/check-promql.py       # every PromQL expression parsed
-python3 scripts/validate/check-diagrams.py     # every Mermaid source
-python3 scripts/validate/simulate-netpol.py    # 46 policy assertions
-python3 scripts/validate/simulate-rbac.py      # 28 RBAC assertions
+bash    platform/admin/validate/verify-course.sh      # everything below, plus an inventory
+python3 platform/admin/validate/check-manifests.py    # manifest wiring
+python3 platform/admin/validate/check-helm-chart.py   # 94 chart assertions
+python3 platform/admin/validate/check-promql.py       # every PromQL expression parsed
+python3 platform/admin/validate/check-diagrams.py     # every Mermaid source
+python3 platform/admin/validate/simulate-netpol.py    # 46 policy assertions
+python3 platform/admin/validate/simulate-rbac.py      # 28 RBAC assertions
 ```
 
 ---

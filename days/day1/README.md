@@ -52,16 +52,16 @@ make validate-day1
 
 ## Diagram sources
 
-- [`d1-01-orchestration-problem.mmd`](../../platform/diagrams/mermaid/d1-01-orchestration-problem.mmd)
-- [`d1-02-reconciliation-loop.mmd`](../../platform/diagrams/mermaid/d1-02-reconciliation-loop.mmd)
-- [`d1-03-cluster-architecture.mmd`](../../platform/diagrams/mermaid/d1-03-cluster-architecture.mmd)
-- [`d1-04-apply-request-flow.mmd`](../../platform/diagrams/mermaid/d1-04-apply-request-flow.mmd)
-- [`d1-05-pod-anatomy.mmd`](../../platform/diagrams/mermaid/d1-05-pod-anatomy.mmd)
-- [`d1-06-ownership-chain.mmd`](../../platform/diagrams/mermaid/d1-06-ownership-chain.mmd)
-- [`d1-07-service-selection.mmd`](../../platform/diagrams/mermaid/d1-07-service-selection.mmd)
-- [`d1-08-namespaces-trust-zones.mmd`](../../platform/diagrams/mermaid/d1-08-namespaces-trust-zones.mmd)
-- [`d1-09-triage-loop.mmd`](../../platform/diagrams/mermaid/d1-09-triage-loop.mmd)
-- [`d1-10-day1-end-state.mmd`](../../platform/diagrams/mermaid/d1-10-day1-end-state.mmd)
+- [`d1-01-orchestration-problem.mmd`](../../platform/admin/authoring/diagrams/mermaid/d1-01-orchestration-problem.mmd)
+- [`d1-02-reconciliation-loop.mmd`](../../platform/admin/authoring/diagrams/mermaid/d1-02-reconciliation-loop.mmd)
+- [`d1-03-cluster-architecture.mmd`](../../platform/admin/authoring/diagrams/mermaid/d1-03-cluster-architecture.mmd)
+- [`d1-04-apply-request-flow.mmd`](../../platform/admin/authoring/diagrams/mermaid/d1-04-apply-request-flow.mmd)
+- [`d1-05-pod-anatomy.mmd`](../../platform/admin/authoring/diagrams/mermaid/d1-05-pod-anatomy.mmd)
+- [`d1-06-ownership-chain.mmd`](../../platform/admin/authoring/diagrams/mermaid/d1-06-ownership-chain.mmd)
+- [`d1-07-service-selection.mmd`](../../platform/admin/authoring/diagrams/mermaid/d1-07-service-selection.mmd)
+- [`d1-08-namespaces-trust-zones.mmd`](../../platform/admin/authoring/diagrams/mermaid/d1-08-namespaces-trust-zones.mmd)
+- [`d1-09-triage-loop.mmd`](../../platform/admin/authoring/diagrams/mermaid/d1-09-triage-loop.mmd)
+- [`d1-10-day1-end-state.mmd`](../../platform/admin/authoring/diagrams/mermaid/d1-10-day1-end-state.mmd)
 
 Rendered with `cd diagrams && ./render.sh --only d1` (needs mermaid-cli). The deck's diagrams are separate and native to PowerPoint — their source is `slides/src/day1/diagrams.js`.
 

@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  ============================================================================
+  Structured JSON logging — inherited by every AxisPay service via axispay-common.
+  ============================================================================
+  Logs go to stdout as one JSON object per line. Nothing is written to a file.
+
+  That is not a style preference — it is the contract a container has with its
+  platform. The kubelet captures stdout; `kubectl logs` reads it; on Day 5 Alloy
+  ships it to Loki. A service that writes to /var/log/app.log inside its own
+  container produces logs nobody can read and that vanish when the pod restarts.
+
+  Static fields (service, version, pod, env) come from the same environment
+  variables the pod spec injects. The correlation_id comes from the MDC, so a
+  single payment can be traced across every service it touches on Day 5.
+  ============================================================================
+-->
+<configuration>
+    <appender name="stdout" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder class="net.logstash.logback.encoder.LoggingEventCompositeJsonEncoder">
+            <providers>
+                <pattern>
+                    <pattern>
+                        {
+                          "service": "${SERVICE_NAME:-axispay-service}",
+                          "version": "${SERVICE_VERSION:-1.0.0}",
+                          "pod": "${POD_NAME:-local}",
+                          "env": "${ENVIRONMENT:-dev}"
+                        }
+                    </pattern>
+                </pattern>
+                <timestamp>
+                    <fieldName>ts</fieldName>
+                    <pattern>yyyy-MM-dd'T'HH:mm:ssZ</pattern>
+                </timestamp>
+                <logLevel>
+                    <fieldName>level</fieldName>
+                </logLevel>
+                <loggerName>
+                    <fieldName>logger</fieldName>
+                </loggerName>
+                <message>
+                    <fieldName>msg</fieldName>
+                </message>
+                <mdc/>
+                <arguments/>
+                <stackTrace>
+                    <fieldName>exception</fieldName>
+                </stackTrace>
+            </providers>
+        </encoder>
+    </appender>
+
+    <!-- The embedded server's own access log duplicates ours and is not JSON. -->
+    <logger name="org.apache.tomcat" level="WARN"/>
+    <logger name="org.apache.catalina" level="WARN"/>
+
+    <root level="${LOG_LEVEL:-INFO}">
+        <appender-ref ref="stdout"/>
+    </root>
+</configuration>

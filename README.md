@@ -6,7 +6,7 @@
 
 Build, operate, secure and troubleshoot a production-style payments platform on Kubernetes.
 
-`Ubuntu 26.04 LTS` · `Minikube` · `Kubernetes v1.36` · `Python 3.13 + FastAPI` · `PostgreSQL 17` · `Redis 7.4` · `RabbitMQ 4` · `Helm 3` · `Prometheus · Grafana · Loki`
+`Ubuntu 26.04 LTS` · `Minikube` · `Kubernetes v1.36` · `Java 21 LTS + Spring Boot 3.4 + Maven` · `PostgreSQL 17` · `Redis 7.4` · `RabbitMQ 4` · `Helm 3` · `Prometheus · Grafana · Loki`
 
 </div>
 
@@ -78,7 +78,7 @@ If `make preflight` reports a problem, fix it before Monday. It is designed to c
 | **Trainer guides** | Five. Minute-by-minute timing, what to cut when running late and in what order, the places students reliably get stuck, the demos worth doing live, and the hard questions with answers |
 | **Practicals** | **35 folders** — 31 labs + 4 incident windows, plus the capstone. Each holds its README and its own YAML, written for someone new to Kubernetes on Ubuntu: every flag explained, every YAML field annotated, expected output shown before the command. `make verify` enforces the format. |
 | **Incidents** | **10 faults in 7 windows**, with realistic tickets, escalating hints and a scoring rubric. Three are injected unannounced during the capstone |
-| **Code** | **16 services** — Python 3.13 / FastAPI on a shared library — tested end to end, plus an 11-table schema and 28,000 statements of fictional seed data that balances to zero |
+| **Code** | **16 services** — Java 21 / Spring Boot on a shared library — tested end to end, plus an 11-table schema and 28,000 statements of fictional seed data that balances to zero |
 | **Manifests** | **67 files, 151 objects.** No beta APIs. Wiring verified by script |
 | **Helm chart** | One chart, **13 templates, 5 values files**, 69 rendered objects, **94 assertions** checked offline with no cluster and no helm binary |
 | **Observability** | **9 alert rules**, **22 dashboard panels** across two generated dashboards, alert routing with inhibition, and a receiver that lets you *prove* the routing |
@@ -124,7 +124,7 @@ kubernetes/
 │         assessment · answer key · solutions
 │
 │   ── THE PLATFORM ─────────────────────────────────────────────────────
-├── images/         16 services — Python 3.13 / FastAPI + Dockerfiles
+├── images/         16 services — Java 21 / Spring Boot + Dockerfiles
 ├── manifests/      Kubernetes YAML, day by day — 67 files, 151 objects
 ├── charts/         The Helm chart, and the observability stack's values
 ├── data/           Schema, seed generator, API fixtures

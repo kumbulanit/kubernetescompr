@@ -157,7 +157,7 @@ It restores service instantly. It also **removes the cardholder-data segmentatio
 ```bash
 kubectl apply -f manifests/day4/netpol/05-data-tier.yaml
 kubectl get netpol -n axispay-data
-python3 scripts/validate/simulate-netpol.py            # 46 assertions — proof it is intact
+python3 platform/admin/validate/simulate-netpol.py            # 46 assertions — proof it is intact
 ```
 
 Then verify the *symptom* is gone, not just the policy restored:
@@ -222,7 +222,7 @@ curl -s -o /dev/null -w '%{http_code}\n' https://api.axispay.local/api/v1/_info 
 ## Phase 4 — Validation
 
 ```bash
-bash scripts/validate/capstone-validate.sh
+bash platform/admin/validate/capstone-validate.sh
 ```
 
 It must exit 0. The checks that matter most, and why:

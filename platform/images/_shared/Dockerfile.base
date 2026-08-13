@@ -1,41 +1,11 @@
 # ==============================================================================
 # AxisPay shared base image
+# Java / Spring Boot runtime
 # ==============================================================================
-# Every AxisPay service is built FROM this layer, so the security posture is
-# defined once and inherited sixteen times.
-#
-# Build:  docker build -f images/_shared/Dockerfile.base -t axispay/base:1.0.0 images/_shared
-# ==============================================================================
-FROM python:3.13-slim-bookworm
+FROM eclipse-temurin:21-jre
 
-# --- non-root from the start --------------------------------------------------
-# UID 10001 is arbitrary but deliberate: it is well above the 0-999 range Debian
-# reserves for system accounts, so it cannot collide with a host user if the
-# container filesystem is ever inspected from the node.
-#
-# Kubernetes CAN enforce this with securityContext.runAsNonRoot (taught on Day
-# 3), but a correct image should not depend on the orchestrator to be safe.
-# Defence in depth: the image is right, and the cluster verifies it.
-RUN groupadd --gid 10001 axispay \
- && useradd --uid 10001 --gid 10001 --create-home --shell /usr/sbin/nologin axispay
-
-ENV PYTHONUNBUFFERED=1 \
-    PYTHONDONTWRITEBYTECODE=1 \
-    PIP_NO_CACHE_DIR=1 \
-    PIP_DISABLE_PIP_VERSION_CHECK=1
-
-# PYTHONUNBUFFERED=1 matters more than it looks. Without it, Python buffers
-# stdout when it is a pipe — which it always is in a container. Logs then
-# appear in `kubectl logs` in delayed bursts, or not at all if the pod is
-# killed before the buffer flushes. Students debugging a CrashLoopBackOff on
-# Day 2 would see an empty log for a service that was logging perfectly well.
+RUN groupadd --gid 10001 axispay   && useradd --uid 10001 --gid 10001 --create-home --shell /usr/sbin/nologin axispay
 
 WORKDIR /app
-
-COPY requirements.txt /tmp/requirements.txt
-RUN pip install --no-cache-dir -r /tmp/requirements.txt && rm /tmp/requirements.txt
-
-COPY axispay_common /app/axispay_common
-
 USER 10001:10001
 EXPOSE 8080
