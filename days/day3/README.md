@@ -53,12 +53,12 @@ make validate-day3
 
 ## Diagram sources
 
-- [`d3-01-configmap-consumption.mmd`](../../platform/diagrams/mermaid/d3-01-configmap-consumption.mmd)
-- [`d3-02-secret-reality.mmd`](../../platform/diagrams/mermaid/d3-02-secret-reality.mmd)
-- [`d3-03-pv-pvc-binding.mmd`](../../platform/diagrams/mermaid/d3-03-pv-pvc-binding.mmd)
-- [`d3-04-waitforfirstconsumer.mmd`](../../platform/diagrams/mermaid/d3-04-waitforfirstconsumer.mmd)
-- [`d3-05-statefulset-vs-deployment.mmd`](../../platform/diagrams/mermaid/d3-05-statefulset-vs-deployment.mmd)
-- [`d3-06-day3-end-state.mmd`](../../platform/diagrams/mermaid/d3-06-day3-end-state.mmd)
+- [`d3-01-configmap-consumption.mmd`](../../platform/admin/authoring/diagrams/mermaid/d3-01-configmap-consumption.mmd)
+- [`d3-02-secret-reality.mmd`](../../platform/admin/authoring/diagrams/mermaid/d3-02-secret-reality.mmd)
+- [`d3-03-pv-pvc-binding.mmd`](../../platform/admin/authoring/diagrams/mermaid/d3-03-pv-pvc-binding.mmd)
+- [`d3-04-waitforfirstconsumer.mmd`](../../platform/admin/authoring/diagrams/mermaid/d3-04-waitforfirstconsumer.mmd)
+- [`d3-05-statefulset-vs-deployment.mmd`](../../platform/admin/authoring/diagrams/mermaid/d3-05-statefulset-vs-deployment.mmd)
+- [`d3-06-day3-end-state.mmd`](../../platform/admin/authoring/diagrams/mermaid/d3-06-day3-end-state.mmd)
 
 Rendered with `cd diagrams && ./render.sh --only d3` (needs mermaid-cli). The deck's diagrams are separate and native to PowerPoint — their source is `slides/src/day3/diagrams.js`.
 

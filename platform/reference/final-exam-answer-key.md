@@ -67,7 +67,7 @@
 
 *(1)* **Recovery:** delete the Deployment and let Helm recreate it. That means an outage, in production, during an already-failed release. `helm rollback` does not help, because the rendered selector in the previous release is the *old* value and the live object still has it — the object is fine; the *new* render is what cannot be applied.
 
-*(1)* **Guard:** keep `.spec.selector` to identity labels only — `app.kubernetes.io/name` and `app.kubernetes.io/instance` — and assert it in CI. `scripts/validate/check-helm-chart.py` fails the build if any selector contains a chart or version label.
+*(1)* **Guard:** keep `.spec.selector` to identity labels only — `app.kubernetes.io/name` and `app.kubernetes.io/instance` — and assert it in CI. `platform/admin/validate/check-helm-chart.py` fails the build if any selector contains a chart or version label.
 
 > Award the third mark only if the student recognises that rollback does not fix it. Many will assume it does.
 

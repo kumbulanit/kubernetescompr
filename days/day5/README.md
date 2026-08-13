@@ -51,15 +51,15 @@ make validate-day5
 
 ## Diagram sources
 
-- [`d5-01-identity-and-admission.mmd`](../../platform/diagrams/mermaid/d5-01-identity-and-admission.mmd)
-- [`d5-02-psa-modes.mmd`](../../platform/diagrams/mermaid/d5-02-psa-modes.mmd)
-- [`d5-03-rbac-matrix.mmd`](../../platform/diagrams/mermaid/d5-03-rbac-matrix.mmd)
-- [`d5-04-paths-to-a-secret.mmd`](../../platform/diagrams/mermaid/d5-04-paths-to-a-secret.mmd)
-- [`d5-05-helm-release.mmd`](../../platform/diagrams/mermaid/d5-05-helm-release.mmd)
-- [`d5-06-scrape-path.mmd`](../../platform/diagrams/mermaid/d5-06-scrape-path.mmd)
-- [`d5-07-log-pipeline.mmd`](../../platform/diagrams/mermaid/d5-07-log-pipeline.mmd)
-- [`d5-08-alert-flow.mmd`](../../platform/diagrams/mermaid/d5-08-alert-flow.mmd)
-- [`d5-09-day5-end-state.mmd`](../../platform/diagrams/mermaid/d5-09-day5-end-state.mmd)
+- [`d5-01-identity-and-admission.mmd`](../../platform/admin/authoring/diagrams/mermaid/d5-01-identity-and-admission.mmd)
+- [`d5-02-psa-modes.mmd`](../../platform/admin/authoring/diagrams/mermaid/d5-02-psa-modes.mmd)
+- [`d5-03-rbac-matrix.mmd`](../../platform/admin/authoring/diagrams/mermaid/d5-03-rbac-matrix.mmd)
+- [`d5-04-paths-to-a-secret.mmd`](../../platform/admin/authoring/diagrams/mermaid/d5-04-paths-to-a-secret.mmd)
+- [`d5-05-helm-release.mmd`](../../platform/admin/authoring/diagrams/mermaid/d5-05-helm-release.mmd)
+- [`d5-06-scrape-path.mmd`](../../platform/admin/authoring/diagrams/mermaid/d5-06-scrape-path.mmd)
+- [`d5-07-log-pipeline.mmd`](../../platform/admin/authoring/diagrams/mermaid/d5-07-log-pipeline.mmd)
+- [`d5-08-alert-flow.mmd`](../../platform/admin/authoring/diagrams/mermaid/d5-08-alert-flow.mmd)
+- [`d5-09-day5-end-state.mmd`](../../platform/admin/authoring/diagrams/mermaid/d5-09-day5-end-state.mmd)
 
 Rendered with `cd diagrams && ./render.sh --only d5` (needs mermaid-cli). The deck's diagrams are separate and native to PowerPoint — their source is `slides/src/day5/diagrams.js`.
 

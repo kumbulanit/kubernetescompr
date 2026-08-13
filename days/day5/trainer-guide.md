@@ -9,11 +9,11 @@
 | When | Do |
 |---|---|
 | **Two evenings before** | Tell the class to run `make observability` at the end of Day 4. It pulls ~1.5 GB. This is the single most common way today runs late. |
-| **Evening before** | `bash capstone/validation/prepare-capstone.sh --build` on your own cluster. It builds the 2.0.0 images and checks everything the capstone needs. |
+| **Evening before** | `bash platform/admin/capstone/prepare-capstone.sh --build` on your own cluster. It builds the 2.0.0 images and checks everything the capstone needs. |
 | **Evening before** | Print the rubric — `documents/instructor/capstone-rubric.md` — one copy per student. You will write on it during the exercise, not afterwards. |
 | **60 min out** | On every student cluster: `kubectl get pods -n axispay-observability`. Anyone missing the stack starts it now and pairs for M5.5. |
 | **30 min out** | Open Grafana, Prometheus and the alert sink on your demo machine. Hunting for a port-forward at minute 62 of the capstone is a self-inflicted incident. |
-| **15 min out** | `python3 scripts/validate/check-promql.py` and `check-helm-chart.py`. Both green before you teach from them. |
+| **15 min out** | `python3 platform/admin/validate/check-promql.py` and `check-helm-chart.py`. Both green before you teach from them. |
 
 ### The check that must not be skipped
 

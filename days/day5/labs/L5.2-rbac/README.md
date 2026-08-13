@@ -212,7 +212,7 @@ kubectl get clusterrole -o json | jq -r '
     (.verbs[]? == "get" or .verbs[]? == "list" or .verbs[]? == "*")))
   | .metadata.name' | sort | head -20
 
-python3 scripts/validate/simulate-rbac.py
+python3 platform/admin/validate/simulate-rbac.py
 ```
 
 28 assertions, offline, no cluster required — which means this can run in CI on every change.

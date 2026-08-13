@@ -220,7 +220,7 @@ kubectl rollout status deployment/kube-prometheus-stack-grafana -n axispay-obser
 
 ```bash
 # the supported way
-$EDITOR scripts/build/build-dashboards.py
+$EDITOR platform/admin/authoring/build-dashboards.py
 make dashboards
 kubectl apply -f manifests/
 ```

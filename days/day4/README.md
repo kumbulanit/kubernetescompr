@@ -52,12 +52,12 @@ make validate-day4
 
 ## Diagram sources
 
-- [`d4-01-networkpolicy-model.mmd`](../../platform/diagrams/mermaid/d4-01-networkpolicy-model.mmd)
-- [`d4-02-zero-trust-zones.mmd`](../../platform/diagrams/mermaid/d4-02-zero-trust-zones.mmd)
-- [`d4-03-ingress-vs-controller.mmd`](../../platform/diagrams/mermaid/d4-03-ingress-vs-controller.mmd)
-- [`d4-04-placement.mmd`](../../platform/diagrams/mermaid/d4-04-placement.mmd)
-- [`d4-05-drain-pdb.mmd`](../../platform/diagrams/mermaid/d4-05-drain-pdb.mmd)
-- [`d4-06-day4-end-state.mmd`](../../platform/diagrams/mermaid/d4-06-day4-end-state.mmd)
+- [`d4-01-networkpolicy-model.mmd`](../../platform/admin/authoring/diagrams/mermaid/d4-01-networkpolicy-model.mmd)
+- [`d4-02-zero-trust-zones.mmd`](../../platform/admin/authoring/diagrams/mermaid/d4-02-zero-trust-zones.mmd)
+- [`d4-03-ingress-vs-controller.mmd`](../../platform/admin/authoring/diagrams/mermaid/d4-03-ingress-vs-controller.mmd)
+- [`d4-04-placement.mmd`](../../platform/admin/authoring/diagrams/mermaid/d4-04-placement.mmd)
+- [`d4-05-drain-pdb.mmd`](../../platform/admin/authoring/diagrams/mermaid/d4-05-drain-pdb.mmd)
+- [`d4-06-day4-end-state.mmd`](../../platform/admin/authoring/diagrams/mermaid/d4-06-day4-end-state.mmd)
 
 Rendered with `cd diagrams && ./render.sh --only d4` (needs mermaid-cli). The deck's diagrams are separate and native to PowerPoint — their source is `slides/src/day4/diagrams.js`.
 

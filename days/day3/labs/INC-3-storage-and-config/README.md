@@ -43,7 +43,7 @@ Fix them in the order that restores the most customer value soonest. Be ready to
 ## Step 0 — Inject
 
 ```bash
-bash scripts/incidents/inject-INC-3.sh
+bash platform/admin/incidents/inject-INC-3.sh
 ```
 
 Wait three minutes.
@@ -363,7 +363,7 @@ make validate-day3
 | Payments still fail | Database not ready yet | `kubectl get pods -n axispay-data` |
 | Ledger sum is not 0 | Something wrote badly during the outage | Report it — this is exactly what the check is for |
 
-Reset: `bash scripts/incidents/resolve-INC-3.sh`
+Reset: `bash platform/admin/incidents/resolve-INC-3.sh`
 
 ---
 

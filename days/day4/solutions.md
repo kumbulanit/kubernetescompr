@@ -110,7 +110,7 @@ kubectl exec -n axispay-edge deploy/edge-gateway -- python3 -c \
 # 2. The policy set, and proof it is enforced rather than merely present
 kubectl get netpol -A
 kubectl get ds -n kube-system calico-node        # the CNI that enforces it
-python3 scripts/validate/simulate-netpol.py      # 46 assertions
+python3 platform/admin/validate/simulate-netpol.py      # 46 assertions
 ```
 
 Why a **timeout** and not a connection refused: the packet is dropped by the CNI, so no RST comes back and the client waits for its own timeout. A refusal would mean the packet reached a host that actively declined it — which would mean the policy was not enforcing. The failure mode is itself part of the evidence.

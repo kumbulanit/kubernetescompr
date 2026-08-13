@@ -1222,10 +1222,10 @@ kubectl get nodes -o custom-columns='NODE:.metadata.name,KUBELET:.status.nodeInf
 ## Offline validation — no cluster required
 
 ```bash
-python3 scripts/validate/check-helm-chart.py     # 94 chart assertions
-python3 scripts/validate/check-promql.py         # 47 expressions parsed
-python3 scripts/validate/simulate-rbac.py        # 28 RBAC assertions
-python3 scripts/validate/simulate-netpol.py      # 46 policy assertions
+python3 platform/admin/validate/check-helm-chart.py     # 94 chart assertions
+python3 platform/admin/validate/check-promql.py         # 47 expressions parsed
+python3 platform/admin/validate/simulate-rbac.py        # 28 RBAC assertions
+python3 platform/admin/validate/simulate-netpol.py      # 46 policy assertions
 ```
 
 ---

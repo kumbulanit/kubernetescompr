@@ -47,7 +47,7 @@ This one is harder than yesterday's. There is a symptom that looks like the prob
 Instructor-led? Already done. Working alone:
 
 ```bash
-bash scripts/incidents/inject-INC-2.sh
+bash platform/admin/incidents/inject-INC-2.sh
 ```
 
 **Wait three minutes** before you start — the symptom needs time to develop, and watching it develop is part of the exercise.
@@ -448,9 +448,9 @@ More pods, all dying every seventeen seconds. More churn, more dependency load, 
 | `CrashLoopBackOff` with a different reason | Something else too | `describe` again — read `Last State` |
 | HPA still at max | It scales down slowly, on purpose | Five-minute stabilisation window. Wait |
 | `FailedCreate` quota errors | HPA still asking for pods | Resolves once the HPA comes down |
-| Cannot reproduce | Injection did not run | `bash scripts/incidents/inject-INC-2.sh`, wait 3 min |
+| Cannot reproduce | Injection did not run | `bash platform/admin/incidents/inject-INC-2.sh`, wait 3 min |
 
-Reset: `bash scripts/incidents/resolve-INC-2.sh`
+Reset: `bash platform/admin/incidents/resolve-INC-2.sh`
 
 ---
 

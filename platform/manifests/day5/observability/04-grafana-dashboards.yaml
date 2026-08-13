@@ -1,7 +1,7 @@
 # ==============================================================================
 # Grafana dashboards — GENERATED FILE, DO NOT EDIT BY HAND
 # ==============================================================================
-# Source:    scripts/build/build-dashboards.py
+# Source:    platform/admin/authoring/build-dashboards.py
 # Regenerate: make dashboards
 #
 # The Grafana sidecar shipped with kube-prometheus-stack watches for

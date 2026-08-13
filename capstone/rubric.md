@@ -130,8 +130,8 @@ _______________________________________________________________________
 **Automatic zero** if the NetworkPolicy was deleted (§3, INC-6).
 
 ```bash
-python3 scripts/validate/simulate-netpol.py     # must still report 46 assertions
-python3 scripts/validate/simulate-rbac.py       # must still report 28 assertions
+python3 platform/admin/validate/simulate-netpol.py     # must still report 46 assertions
+python3 platform/admin/validate/simulate-rbac.py       # must still report 28 assertions
 ```
 
 ---

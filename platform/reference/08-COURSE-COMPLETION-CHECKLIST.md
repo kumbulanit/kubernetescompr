@@ -22,7 +22,7 @@
 
 ### The day before
 
-- [ ] `bash scripts/validate/verify-course.sh` — green
+- [ ] `bash platform/admin/validate/verify-course.sh` — green
 - [ ] Your own cluster rebuilt from scratch, so your demos are on the same state the room will have
 - [ ] Printed: five assessments, five answer keys, one capstone rubric **per student**
 - [ ] `make observability` scheduled for the end of Day 4 — say it twice
@@ -114,7 +114,7 @@ Run before every cohort, and after any change.
 ### Automated
 
 ```bash
-bash scripts/validate/verify-course.sh
+bash platform/admin/validate/verify-course.sh
 ```
 
 - [ ] Every shell script, Python file, YAML file and deck source parses
@@ -166,7 +166,7 @@ for d in 1 2 3 4 5; do make validate-day$d || break; done
 | A deprecated API in a manifest | The manifest, the chart template, and the lab that quotes it — `check-manifests.py` will not catch this |
 | A metric renamed upstream | `check-promql.py` catches it. Fix the dashboards and the rules |
 | A slide is wrong | `slides/src/day<N>/day<N>.js`, then rebuild. **Never edit the .pptx** — it is generated |
-| A dashboard is wrong | `scripts/build/build-dashboards.py`, then `make dashboards`. **Never edit in the Grafana UI** |
+| A dashboard is wrong | `platform/admin/authoring/build-dashboards.py`, then `make dashboards`. **Never edit in the Grafana UI** |
 | A diagram is wrong | `diagrams/mermaid/*.mmd`, then `./render.sh`. Deck diagrams are separate, in `slides/src/day<N>/diagrams.js` |
 
 ---

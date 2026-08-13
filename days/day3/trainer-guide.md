@@ -8,7 +8,7 @@
 
 | When | Do |
 |---|---|
-| **Evening before** | Regenerate seed data if you changed anything: `python3 data/seed/generate_seed.py -o data/seed/02-seed.sql`. It asserts both invariants and refuses to write if they fail. |
+| **Evening before** | Regenerate seed data if you changed anything: `python3 platform/admin/authoring/generate_seed.py -o data/seed/02-seed.sql`. It asserts both invariants and refuses to write if they fail. |
 | **60 min out** | Pre-pull `postgres:17-alpine`, `redis:7.4-alpine`, `rabbitmq:4-management-alpine`. First pull on 20 laptops over one venue connection is the classic Day 3 disaster. |
 | **45 min out** | Check free disk: the data tier needs ~8 GB of PVCs plus images. `minikube -p axispay ssh -- df -h`. |
 | **30 min out** | Run L3.5 end to end yourself on a clean cluster and time it. |

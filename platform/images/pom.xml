@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  ============================================================================
+  AxisPay — Java platform (parent / aggregator POM)
+  ============================================================================
+  Every AxisPay microservice is a module of this Maven reactor. The security
+  posture, the Java version and every dependency version are defined once here
+  and inherited by all sixteen services, exactly as the shared base image did
+  for the previous Python platform.
+
+  Build the whole platform:      mvn -f platform/images/pom.xml package
+  Build one service + its deps:  mvn -f platform/images/pom.xml -pl payment-service -am package
+  ============================================================================
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-parent</artifactId>
+        <version>3.4.1</version>
+        <relativePath/>
+    </parent>
+
+    <groupId>io.axispay</groupId>
+    <artifactId>axispay-platform</artifactId>
+    <version>1.0.0</version>
+    <packaging>pom</packaging>
+    <name>AxisPay Platform</name>
+    <description>AxisPay pan-African payment orchestration platform — Java / Spring Boot</description>
+
+    <modules>
+        <module>axispay-common</module>
+        <module>edge-gateway</module>
+        <module>auth-service</module>
+        <module>merchant-service</module>
+        <module>payment-service</module>
+        <module>customer-service</module>
+        <module>fraud-service</module>
+        <module>routing-service</module>
+        <module>ledger-service</module>
+        <module>settlement-service</module>
+        <module>notification-service</module>
+        <module>audit-service</module>
+        <module>reporting-service</module>
+        <module>node-agent</module>
+        <module>loadgen</module>
+        <module>recon-worker</module>
+        <module>alert-sink</module>
+    </modules>
+
+    <properties>
+        <!-- Latest LTS. JDK 25 compiles to the 21 LTS bytecode level, which every
+             Spring Boot 3.4 dependency supports and every Temurin runtime image ships. -->
+        <java.version>21</java.version>
+        <maven.compiler.release>21</maven.compiler.release>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <logstash-logback.version>8.0</logstash-logback.version>
+    </properties>
+
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>io.axispay</groupId>
+                <artifactId>axispay-common</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>net.logstash.logback</groupId>
+                <artifactId>logstash-logback-encoder</artifactId>
+                <version>${logstash-logback.version}</version>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+</project>

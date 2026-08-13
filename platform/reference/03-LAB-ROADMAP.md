@@ -34,7 +34,7 @@ annotated, and expected output is shown *before* the command is run.
 | 4 | **What you need before you start** | Numbered checks with the exact command and the exact expected output |
 | 5 | **What is in this folder** | Every file, and what it is for |
 | 6 | **Steps** | Each one: **why we are doing this** → **run this** → **what you should see** → **what that means** → what to do if it differs |
-| 7 | **Did it work?** | The automated validator in `scripts/validate/` |
+| 7 | **Did it work?** | The automated validator in `platform/admin/validate/` |
 | 8 | **Clean up** | Usually very little — the platform persists |
 | 9 | **If something went wrong** | Symptom → cause → command, for the failures we actually see |
 | 10 | **Try this yourself** | Unassisted extension. Goal and acceptance test, no commands |
@@ -43,7 +43,7 @@ annotated, and expected output is shown *before* the command is run.
 **Design rule:** every step explains *why* before *what*. `kubectl apply -f x.yaml`
 with no explanation trains typists, not engineers.
 
-**Enforced**, not merely intended: `scripts/validate/verify-course.sh` §5a fails
+**Enforced**, not merely intended: `platform/admin/validate/verify-course.sh` §5a fails
 the build if any practical is missing the first-time box, the "what you are going
 to do" section, the folder-contents table, the troubleshooting table, or the link
 back to `labs/GETTING-STARTED.md`.
@@ -231,7 +231,7 @@ The `X-Correlation-Id` injected by `edge-gateway` on Day 1 — which students im
 
 ### 7.1 How incidents are run
 
-1. **Injection.** The instructor runs `scripts/incidents/inject-INC-N.sh` — silently, ideally during a break. Students are not told which incident, only that something is wrong.
+1. **Injection.** The instructor runs `platform/admin/incidents/inject-INC-N.sh` — silently, ideally during a break. Students are not told which incident, only that something is wrong.
 2. **Report.** Students receive a realistic ticket, not a hint:
    > *"SEV-2 — Merchant `MER_7QK2XD9P4A` reports payment API returning errors since 16:28. Approval rate down 40%. Two other merchants have confirmed. Ops on call needs an update in 15 minutes."*
 3. **Triage.** Students apply the 6-step loop. The instructor answers questions about *tools*, never about *causes*.
@@ -280,7 +280,7 @@ The `X-Correlation-Id` injected by `edge-gateway` on Day 1 — which students im
 | **1 · Pre-flight** | 15 | Verify platform health; confirm PDBs, probes and HPAs; record a baseline; write the rollback plan | Does the student check *before* changing? |
 | **2 · Upgrade** | 25 | `helm upgrade` to 2.0.0 with `--atomic`; run the settlement migration as a Job; watch the rollout | Correct use of Helm; migration ordering; monitoring during, not after |
 | **3 · Incident wave** | 40 | INC-5, INC-6 and INC-7 injected without warning, ~12 minutes apart | Triage under pressure; prioritisation; not making it worse |
-| **4 · Recovery & validation** | 20 | Restore full service; run `scripts/validate/capstone-validate.sh`; confirm the ledger balances | Verification discipline |
+| **4 · Recovery & validation** | 20 | Restore full service; run `platform/admin/validate/capstone-validate.sh`; confirm the ledger balances | Verification discipline |
 | **5 · Presentation** | 10 | 5-minute incident report to the "AxisPay change board" (the class) | Communication under scrutiny |
 
 ### 8.3 The nine required competencies
@@ -328,12 +328,12 @@ Every lab has an automated validation script. No lab is "complete" on the studen
 
 | Script | Purpose |
 |---|---|
-| `scripts/validate/validate-lab-<id>.sh` | Per-lab acceptance test — exits 0, or prints exactly what is missing and which manifest to check |
-| `scripts/validate/checkpoint-day<N>.sh` | Rebuilds a full day end-state from manifests in under 5 minutes |
-| `scripts/validate/platform-health.sh` | Full-platform health: pods, endpoints, PVCs, policies, queue depth, ledger balance |
-| `scripts/validate/capstone-validate.sh` | The nine capstone competencies, checked mechanically |
-| `scripts/incidents/inject-INC-<n>.sh` | Injects a fault |
-| `scripts/incidents/resolve-INC-<n>.sh` | Instructor escape hatch — restores state if a student is stuck past the time box |
+| `platform/admin/validate/validate-lab-<id>.sh` | Per-lab acceptance test — exits 0, or prints exactly what is missing and which manifest to check |
+| `platform/admin/validate/checkpoint-day<N>.sh` | Rebuilds a full day end-state from manifests in under 5 minutes |
+| `platform/admin/validate/platform-health.sh` | Full-platform health: pods, endpoints, PVCs, policies, queue depth, ledger balance |
+| `platform/admin/validate/capstone-validate.sh` | The nine capstone competencies, checked mechanically |
+| `platform/admin/incidents/inject-INC-<n>.sh` | Injects a fault |
+| `platform/admin/incidents/resolve-INC-<n>.sh` | Instructor escape hatch — restores state if a student is stuck past the time box |
 
 Validation output is written to be *useful when it fails*:
 

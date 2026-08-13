@@ -42,9 +42,8 @@ kubernetes/
 ├── data/                         Database schema, seed generator, fixtures
 │
 │   ── THE MACHINERY ──────────────────────────────────────────────────────
-├── scripts/                      Setup, build, validation, incident injection
-├── slides/                       Deck SOURCE (src/, assets/, templates/)
-├── diagrams/                     Mermaid masters and rendered output
+├── scripts/                      Student setup and build (installers, image builds)
+├── admin/                        Instructor-only: validation, incidents, authoring
 └── capstone/                     Brief, incident tickets, migration, solutions
 ```
 
@@ -90,7 +89,7 @@ byte for byte.
 
 All five days together, deliberately: a student works the week in one place rather
 than hopping between topic folders. Every lab has the same twelve sections and a
-matching validator at `scripts/validate/validate-lab-<ID>.sh`.
+matching validator at `platform/admin/validate/validate-lab-<ID>.sh`.
 
 ### 3.2 `documents/` — the instructor's door
 
@@ -224,20 +223,20 @@ charts/axispay/
 
 ### 3.9 `images/` — container build contexts
 
-One directory per service. This is where the FastAPI source lives, because a Dockerfile without its source is not reproducible.
+One directory per service. This is where the Java/Spring Boot source and Maven build metadata live, because a Dockerfile without its source is not reproducible.
 
 ```
 images/
 ├── _shared/
-│   ├── requirements.txt          Pinned Python dependencies
-│   ├── axispay_common/           Shared library: config, logging, health,
-│   │                             metrics, correlation IDs, DB/Redis/MQ clients
-│   └── Dockerfile.base           Common base layer
+│   ├── Dockerfile.base           Common Java runtime base
+│   └── axispay_common/           Shared library: config, logging, health,
+│                                 metrics, correlation IDs, DB/Redis/MQ clients
 ├── payment-service/
 │   ├── Dockerfile
-│   ├── requirements.txt
-│   ├── app/{main.py,api.py,models.py,service.py,clients.py,config.py}
-│   ├── tests/
+│   ├── pom.xml
+│   ├── src/main/java/.../Application.java
+│   ├── src/main/java/.../PaymentController.java
+│   ├── src/test/
 │   └── README.md                 API contract, env vars, ports, dependencies
 ├── edge-gateway/ auth-service/ merchant-service/ customer-service/
 ├── routing-service/ fraud-service/ ledger-service/
@@ -247,45 +246,50 @@ images/
 
 Every Dockerfile: multi-stage · non-root UID 10001 · no shell in final layer where avoidable · `HEALTHCHECK` · pinned base by digest · `.dockerignore`.
 
-### 3.10 `diagrams/` — sources and renders
+### 3.10 `admin/authoring/diagrams/` — sources and renders
 
 ```
-diagrams/
+admin/authoring/diagrams/
 ├── README.md                     Naming, colour palette, how to regenerate
 ├── mermaid/                      MASTER SOURCE — *.mmd, one per diagram
-├── drawio/                       Editable *.drawio for complex architecture figures
-├── svg/                          Rendered — for web, manual, GitHub
-├── png/                          Rendered @2x — for PowerPoint and print
-├── pptx/                         Native PowerPoint shapes — editable in-deck
-└── render.sh                     mermaid → svg → png → pptx pipeline
+└── render.sh                     mermaid → svg → png pipeline
 ```
 
 ~55 diagrams planned, covering every major topic. Mermaid is the master; everything else is generated.
 
-### 3.11 `scripts/`
+### 3.11 `scripts/` and `admin/`
+
+Student-facing tooling lives in `scripts/`; everything instructor-only lives in `admin/`.
 
 ```
 scripts/
 ├── setup/
 │   ├── 00-preflight.sh           Checks CPU, RAM, disk, virtualisation, ports
-│   ├── 01-install-tools.sh       Docker, minikube, kubectl, helm on Ubuntu
-│   ├── 02-preload-images.sh      Pull and cache all base images (run once, then offline)
-│   ├── 03-create-cluster.sh      minikube start with the correct flags
-│   └── 04-verify-cluster.sh      Confirms Calico, ingress, metrics-server, node count
-├── build/
-│   ├── build-all.sh              Build 16 images into the Minikube daemon
-│   └── build-service.sh          Build one
+│   ├── 05-seed-database.sh       Load (and optionally regenerate) the seed data
+│   ├── 06-generate-tls.sh        Issue the platform TLS material
+│   └── 07-install-observability.sh  Prometheus, Grafana, Loki, Alloy
+└── build/
+    ├── build-all.sh              Build 16 images into the Minikube daemon
+    └── build-service.sh          Build one
+
+admin/
 ├── validate/
-│   ├── validate-lab-*.sh         31 per-lab acceptance tests
+│   ├── validate-lab-*.sh         Per-lab acceptance tests
 │   ├── checkpoint-day<N>.sh      Rebuild a day's end-state
-│   ├── platform-health.sh        Full platform health report
-│   └── capstone-validate.sh      Nine capstone competencies
+│   ├── verify-course.sh          Whole-course offline verification
+│   ├── capstone-validate.sh      Nine capstone competencies
+│   └── check-*.py / simulate-*.py  Offline manifest/chart/PromQL/policy checks
 ├── incidents/
 │   ├── inject-INC-<n>.sh         Inject a fault
 │   └── resolve-INC-<n>.sh        Instructor escape hatch
-└── teardown/
-    ├── reset-day.sh              Reset one day, keep earlier work
-    └── destroy-cluster.sh        Full teardown
+├── capstone/
+│   └── prepare-capstone.sh       Capstone pre-flight
+└── authoring/                    Artefact generators (outputs are committed)
+    ├── slides-src/               PowerPoint deck sources (Node)
+    ├── diagrams/                 Mermaid masters + render.sh
+    ├── build_manual.py           Markdown → participant-manual PDF
+    ├── build-dashboards.py       Grafana dashboard ConfigMaps
+    └── generate_seed.py          Seed-SQL generator
 ```
 
 All scripts: `set -euo pipefail` · `--help` · `--dry-run` where destructive · colourised pass/fail · `shellcheck`-clean.
