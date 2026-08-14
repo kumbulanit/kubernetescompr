@@ -133,7 +133,7 @@ bash platform/admin/validate/verify-course.sh
 ### On a real cluster
 
 ```bash
-make cluster && make build && make deploy-all && make seed
+make cluster && make build-all && make deploy-all && make seed
 make observability
 for d in 1 2 3 4 5; do make validate-day$d || break; done
 ```
@@ -162,7 +162,7 @@ for d in 1 2 3 4 5; do make validate-day$d || break; done
 |---|---|
 | Kubernetes minor version | `VERSIONS.env` → `make preflight` → `make validate-all` |
 | A chart version (Prometheus, Loki, Alloy) | `VERSIONS.env`, then re-run `make observability` |
-| An image base | `VERSIONS.env`, then `make build` |
+| An image base | `VERSIONS.env`, then `make build-all` (or `make build SVC=<service>` for one service) |
 | A deprecated API in a manifest | The manifest, the chart template, and the lab that quotes it — `check-manifests.py` will not catch this |
 | A metric renamed upstream | `check-promql.py` catches it. Fix the dashboards and the rules |
 | A slide is wrong | `slides/src/day<N>/day<N>.js`, then rebuild. **Never edit the .pptx** — it is generated |

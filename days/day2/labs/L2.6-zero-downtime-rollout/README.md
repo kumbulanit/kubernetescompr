@@ -42,8 +42,7 @@ Then you will remove the safety mechanisms one at a time and watch requests star
 **If 1.1.0 is missing:**
 
 ```bash
-eval $(minikube -p axispay docker-env)
-IMAGE_TAG=1.1.0 make build
+IMAGE_TAG=1.1.0 make build SVC=payment-service
 ```
 
 ---
@@ -331,7 +330,7 @@ Stay on 1.1.0 — Day 5's capstone upgrades from here to 2.0.0.
 | Failures even with everything correct | Only one replica | `kubectl get deploy payment-service -n axispay-core` — you need at least 2 |
 | Rollout hangs at "Waiting for..." | New pods never become ready | `kubectl get pods` then `describe` the new one |
 | `fail` climbing constantly, not just during rollout | Something else is broken | Check `merchant-service` is `1/1` |
-| `image not found` for 1.1.0 | Not built | `eval $(minikube -p axispay docker-env)` then `IMAGE_TAG=1.1.0 make build` |
+| `image not found` for 1.1.0 | Not built | `IMAGE_TAG=1.1.0 make build SVC=payment-service` |
 | `rollout undo` says no history | Only one revision | `kubectl apply -f manifests/` |
 | Load script shows `000` | Connection refused — nothing listening | Expected during 6a and 6c. Otherwise check the tunnel |
 

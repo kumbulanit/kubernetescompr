@@ -299,7 +299,7 @@ printf "\n%s%s%s\n" "$B" "$(printf '%.0s=' {1..64})" "$N"
 if [[ $FAILED -eq 0 ]]; then
   printf "%s%sThe course verifies.%s Every artefact agrees with every other.\n" "$G" "$B" "$N"
   printf "%sWhat this does NOT prove: that the platform runs. For that:%s\n" "$DIM" "$N"
-  printf "%s  make cluster && make build && make deploy-all && make validate-day5%s\n\n" "$DIM" "$N"
+  printf "%s  make cluster && make build-all && make deploy-all && make validate-day5%s\n\n" "$DIM" "$N"
   exit 0
 fi
 printf "%s%s%d check(s) failed.%s\n\n" "$RED" "$B" "$FAILED" "$N"

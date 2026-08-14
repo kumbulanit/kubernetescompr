@@ -55,11 +55,81 @@ Full prerequisites and a self-assessment: [`documents/reference/00-CURRICULUM.md
 git clone <repo-url> axispay-k8s-training
 cd axispay-k8s-training
 
-make preflight      # Verify your machine can run the labs — do this BEFORE day 1
-make setup          # Install Docker, minikube, kubectl, helm; create the cluster
-make build-all      # Build all 16 service images into Minikube (no registry needed)
-make deploy-day1    # Deploy the Day 1 end-state
-make validate-day1  # Confirm it worked
+make preflight                 # Verify your machine can run the labs — do this BEFORE day 1
+make setup                     # Install Docker, minikube, kubectl, helm; create the cluster
+make build SVC=payment-service # Build one service image into Minikube
+make build-all                 # Build all 16 service images into Minikube (no registry needed)
+make deploy-day1               # Deploy the Day 1 end-state
+make validate-day1             # Confirm it worked
+make validate-lab LAB=L1.3    # Check one lab's result
+```
+
+The `make` targets are wrappers. If you want to see the normal and underlying commands behind them, this is the equivalent:
+
+```bash
+# make preflight
+bash platform/scripts/setup/00-preflight.sh --profile A
+
+# make cluster
+bash platform/scripts/setup/03-create-cluster.sh --profile A
+bash platform/scripts/setup/04-verify-cluster.sh
+
+# vanilla Minikube equivalent of make cluster
+minikube start -p axispay \
+  --driver=docker \
+  --container-runtime=containerd \
+  --kubernetes-version=v1.36.2 \
+  --cpus=4 \
+  --memory=8g \
+  --disk-size=20g \
+  --nodes=3 \
+  --cni=calico \
+  --addons=metrics-server,ingress,storage-provisioner \
+  --wait=all
+
+kubectl config use-context axispay
+kubectl wait --for=condition=Ready node --all --timeout=5m
+
+# make setup
+bash platform/scripts/setup/00-preflight.sh --profile A
+bash platform/scripts/setup/01-install-tools.sh
+bash platform/scripts/setup/02-preload-images.sh
+bash platform/scripts/setup/03-create-cluster.sh --profile A
+bash platform/scripts/setup/04-verify-cluster.sh
+
+# make build SVC=payment-service
+bash platform/scripts/build/build-service.sh --service payment-service --tag 1.0.0
+
+# vanilla Docker/Minikube equivalent of make build SVC=payment-service
+docker build \
+  -t axispay/payment-service:1.0.0 \
+  -f platform/images/payment-service/Dockerfile \
+  .
+minikube -p axispay image load axispay/payment-service:1.0.0
+
+# make build-all
+bash platform/scripts/build/build-all.sh --tag 1.0.0
+
+# vanilla Docker/Minikube equivalent of make build-all
+docker build -t axispay/edge-gateway:1.0.0 -f platform/images/edge-gateway/Dockerfile .
+# ... repeat for each service ...
+minikube -p axispay image load axispay/edge-gateway:1.0.0
+
+# make deploy-day1
+kubectl --context=axispay apply -R -f platform/manifests/00-namespaces/
+kubectl --context=axispay apply -R -f platform/manifests/day1/
+bash platform/admin/validate/checkpoint-day1.sh --wait
+
+# make validate-day1
+bash platform/admin/validate/checkpoint-day1.sh
+
+# make validate-lab LAB=L1.3
+bash platform/admin/validate/validate-lab-L1.3.sh
+
+# vanilla equivalent of a lab validator is the same check, run from the lab or by the script itself
+kubectl get pods -A
+kubectl get deploy -A
+kubectl get svc -A
 ```
 
 If `make preflight` reports a problem, fix it before Monday. It is designed to catch every environment failure we have seen in delivery, and running it a week early turns a lost morning into a five-minute email.
@@ -89,6 +159,16 @@ If `make preflight` reports a problem, fix it before Monday. It is designed to c
 ```bash
 make verify      # every artefact agrees with every other — no cluster needed
 make inventory   # the numbers above
+```
+
+Equivalent raw commands:
+
+```bash
+# make verify
+bash platform/admin/validate/verify-course.sh
+
+# make inventory
+bash platform/admin/validate/verify-course.sh --inventory
 ```
 
 ---

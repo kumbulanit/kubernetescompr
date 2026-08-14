@@ -24,7 +24,8 @@ kubectl get events -n <ns> --sort-by=.lastTimestamp
 make help                      # every target, with descriptions
 make preflight                 # check the machine before anything else
 make cluster                   # create the Minikube cluster (Calico, 3 nodes)
-make build                     # build all 16 images into the cluster's runtime
+make build SVC=payment-service # build one service image (required argument)
+make build-all                 # build all 16 images into the cluster's runtime
 make deploy-all                # Day 1 through Day 5
 make seed                      # schema + 28,000 rows of fictional data
 make observability             # Prometheus, Grafana, Loki, Alloy — RUN BEFORE DAY 5
@@ -35,6 +36,39 @@ make health                    # full platform health report
 
 make incident N=2              # instructor: inject a fault
 make resolve N=2               # instructor: escape hatch
+```
+
+### Normal commands behind the wrappers
+
+```bash
+# make preflight
+bash platform/scripts/setup/00-preflight.sh --profile A
+
+# make cluster
+minikube start -p axispay --driver=docker --container-runtime=containerd --kubernetes-version=v1.36.2 --cpus=4 --memory=8g --disk-size=20g --nodes=3 --cni=calico --addons=metrics-server,ingress,storage-provisioner --wait=all
+kubectl config use-context axispay
+kubectl wait --for=condition=Ready node --all --timeout=5m
+
+# make build SVC=payment-service
+docker build -t axispay/payment-service:1.0.0 -f platform/images/payment-service/Dockerfile .
+minikube -p axispay image load axispay/payment-service:1.0.0
+
+# make build-all
+docker build -t axispay/edge-gateway:1.0.0 -f platform/images/edge-gateway/Dockerfile .
+# repeat for each service, then:
+minikube -p axispay image load axispay/edge-gateway:1.0.0
+
+# make validate-day3
+bash platform/admin/validate/checkpoint-day3.sh
+
+# make validate-lab LAB=L4.4
+bash platform/admin/validate/validate-lab-L4.4.sh
+
+# make health
+kubectl get pods -A
+kubectl get ingress -A
+kubectl get pvc -A
+kubectl get hpa -A
 ```
 
 ### Offline — no cluster, no network
