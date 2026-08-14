@@ -4,9 +4,7 @@
 # ==============================================================================
 FROM maven:3.9.9-eclipse-temurin-21 AS build
 WORKDIR /workspace
-COPY platform/images/pom.xml platform/images/pom.xml
-COPY platform/images/axispay-common platform/images/axispay-common
-COPY platform/images/loadgen platform/images/loadgen
+COPY platform/images platform/images
 RUN mvn -f platform/images/pom.xml -pl loadgen -am -DskipTests package
 
 FROM eclipse-temurin:21-jre
