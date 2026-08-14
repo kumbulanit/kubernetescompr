@@ -28,8 +28,8 @@ GRN=$'\033[32m'; RED=$'\033[31m'; BLU=$'\033[34m'; BLD=$'\033[1m'; RST=$'\033[0m
 # so this script works unchanged from Monday to Friday.
 ALL_SERVICES=(edge-gateway auth-service merchant-service payment-service \
               fraud-service routing-service node-agent recon-worker loadgen \
-              customer-service ledger-service \
-              settlement-service notification-service audit-service reporting-service)
+              customer-service ledger-service settlement-service \
+              notification-service audit-service reporting-service alert-sink)
 
 SERVICES=()
 for s in "${ALL_SERVICES[@]}"; do
