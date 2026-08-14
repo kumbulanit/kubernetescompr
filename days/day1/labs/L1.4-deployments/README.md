@@ -44,8 +44,7 @@ By the end of this lab you will have the whole AxisPay core running — four ser
 **If #3 is low:**
 
 ```bash
-eval $(minikube -p axispay docker-env)
-make build
+make build SVC=payment-service
 ```
 
 **Also make sure L1.3's bare pod is gone**, so the counts in this lab match what you see:
@@ -481,7 +480,7 @@ kubectl apply -f manifests/
 | `selector does not match template labels` | ③ and ⑤ in Step 1 disagree | They must be identical. Compare them carefully |
 | Pods stuck `0/1` after Step 6 | A dependency is still missing | `kubectl get pods -A -l app.kubernetes.io/part-of=axispay` — is `merchant-service` `1/1`? |
 | Pods stuck `Pending` | Not enough CPU or memory on any node | `kubectl describe pod <name> -n <ns>`, read the events. If your machine is small, scale down: `kubectl scale deploy/payment-service -n axispay-core --replicas=1` |
-| `ImagePullBackOff` | Image not in the cluster's store | `eval $(minikube -p axispay docker-env)` then `make build` |
+| `ImagePullBackOff` | Image not in the cluster's store | `make build SVC=payment-service` |
 | Deleted pod does **not** come back | You deleted the Deployment, not a pod | `kubectl get deploy -n axispay-core`. Re-apply the manifest |
 | `curl` returns `401 Unauthorized` | Wrong or missing API key | The header must be exactly `X-API-Key: axp_live_7Kq2mVx9RtLd` |
 | `curl` returns `502` | The gateway cannot reach a service behind it | `kubectl logs -n axispay-edge deploy/edge-gateway --tail=30` |

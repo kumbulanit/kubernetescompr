@@ -255,7 +255,7 @@ Leave the release installed — L5.4 upgrades it.
 | `cannot re-use a name that is still in use` | Objects exist from `kubectl apply` | Delete the raw manifests first |
 | `field is immutable` | Selector labels changed | Step 7 — the fix is deleting the Deployment, so avoid the cause |
 | Release stuck `pending-upgrade` | An upgrade was interrupted | `helm rollback` |
-| `ImagePullBackOff` after install | Images not in the runtime | `eval $(minikube -p axispay docker-env)` then `make build` |
+| `ImagePullBackOff` after install | Images not in the runtime | `make build-all` |
 | `helm lint` passes but objects are wrong | Lint checks syntax, not semantics | `make helm-check` |
 
 ---

@@ -22,8 +22,10 @@ done
 
 minikube -p "${MINIKUBE_PROFILE}" status >/dev/null 2>&1 || {
   echo "Minikube profile '${MINIKUBE_PROFILE}' is not running. Run: make cluster"; exit 1; }
-eval "$(minikube -p "${MINIKUBE_PROFILE}" docker-env)"
 
-echo "Building ${IMAGE_NAMESPACE}/${SVC}:${TAG} ..."
-docker build -t "${IMAGE_NAMESPACE}/${SVC}:${TAG}" -f "$R/platform/images/$SVC/Dockerfile" "$R"
+image="${IMAGE_NAMESPACE}/${SVC}:${TAG}"
+echo "Building ${image} ..."
+docker build -t "$image" -f "$R/platform/images/$SVC/Dockerfile" "$R"
+minikube -p "${MINIKUBE_PROFILE}" image load "$image" >/dev/null
+
 echo "Done. Verify: minikube -p ${MINIKUBE_PROFILE} image ls | grep ${SVC}"

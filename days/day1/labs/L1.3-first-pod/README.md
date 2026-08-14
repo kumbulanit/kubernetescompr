@@ -42,11 +42,10 @@ You will also meet something that catches almost everyone: the pod will report *
 **If #3 prints nothing**, the container image has not been built. Build it now — it takes a few minutes:
 
 ```bash
-eval $(minikube -p axispay docker-env)
-make build
+make build SVC=payment-service
 ```
 
-> **What that first line does.** `minikube docker-env` prints some settings; `eval` applies them to your terminal. It points your `docker` command at the cluster's own container store instead of your laptop's, so images you build are immediately visible to Kubernetes — no uploading anywhere. It only affects the terminal you run it in.
+> **What the build command does.** It builds the image with your local Docker daemon, then loads it into the Minikube runtime. This works with multi-node clusters; `minikube docker-env` is not used because it is incompatible with Minikube's multi-node setup.
 
 ---
 
@@ -474,7 +473,7 @@ kubectl delete pod payment-service-bare -n axispay-core --ignore-not-found
 
 | What you saw | What it means | What to do |
 |---|---|---|
-| `ErrImagePull` or `ImagePullBackOff` | The image is not in the cluster's store | `eval $(minikube -p axispay docker-env)` then `make build`. See "What you need before you start". |
+| `ErrImagePull` or `ImagePullBackOff` | The image is not in the cluster's store | `make build SVC=payment-service`. See "What you need before you start". |
 | Stuck at `Pending` for over a minute | No node can fit it | `kubectl describe pod payment-service-bare -n axispay-core` and read the events at the bottom |
 | `CrashLoopBackOff` | It starts, then exits, repeatedly | `kubectl logs payment-service-bare -n axispay-core --previous` — `--previous` shows the *dead* container's logs. Without it you get the new one's, which are empty |
 | Stuck at `0/1 Running` | Failing its readiness check | Expected here — see Step 5. Confirm with `kubectl describe pod` |

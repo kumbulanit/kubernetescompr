@@ -187,6 +187,21 @@ This checks your machine has everything, and tells you exactly what is missing.
 make preflight
 ```
 
+Equivalent raw command:
+
+```bash
+bash platform/scripts/setup/00-preflight.sh --profile A
+```
+
+Equivalent vanilla checks:
+
+```bash
+docker --version
+minikube version
+kubectl version --client
+helm version --short
+```
+
 Fix anything it reports before continuing. It is designed to catch every environment problem we have seen, and running it now turns a lost morning into five minutes.
 
 ---
@@ -195,9 +210,39 @@ Fix anything it reports before continuing. It is designed to catch every environ
 
 This takes 5–15 minutes the first time, because it downloads a lot.
 
+The `make` command is the friendly wrapper. It does the same work as the underlying setup scripts:
+
 ```bash
 make cluster
 ```
+
+Equivalent script commands:
+
+```bash
+bash platform/scripts/setup/03-create-cluster.sh --profile A
+bash platform/scripts/setup/04-verify-cluster.sh
+```
+
+Equivalent vanilla commands:
+
+```bash
+minikube start -p axispay \
+  --driver=docker \
+  --container-runtime=containerd \
+  --kubernetes-version=v1.36.2 \
+  --cpus=4 \
+  --memory=8g \
+  --disk-size=20g \
+  --nodes=3 \
+  --cni=calico \
+  --addons=metrics-server,ingress,storage-provisioner \
+  --wait=all
+
+kubectl config use-context axispay
+kubectl wait --for=condition=Ready node --all --timeout=5m
+```
+
+If you ever want to understand what a `make` target is doing, this is the quickest way to see it.
 
 Check it is alive:
 
@@ -220,9 +265,59 @@ Three lines, all saying `Ready`. If you see fewer, or `NotReady`, wait sixty sec
 
 This turns the application source code into container images your cluster can run. It takes 5–10 minutes.
 
+The repo has two build styles:
+
+- `make build SVC=payment-service` builds one service image
+- `make build-all` builds all sixteen service images
+
+Single service:
+
 ```bash
-make build
+make build SVC=payment-service
 ```
+
+Equivalent script command:
+
+```bash
+bash platform/scripts/build/build-service.sh --service payment-service --tag 1.0.0
+```
+
+Equivalent vanilla commands:
+
+```bash
+docker build \
+  -t axispay/payment-service:1.0.0 \
+  -f platform/images/payment-service/Dockerfile \
+  .
+
+minikube -p axispay image load axispay/payment-service:1.0.0
+```
+
+Build every service image in one go:
+
+```bash
+make build-all
+```
+
+Equivalent script command:
+
+```bash
+bash platform/scripts/build/build-all.sh --tag 1.0.0
+```
+
+Equivalent vanilla commands:
+
+```bash
+# build each image directly to the host Docker daemon
+docker build -t axispay/edge-gateway:1.0.0 -f platform/images/edge-gateway/Dockerfile .
+# ... repeat for each service ...
+
+# then load each image into Minikube
+minikube -p axispay image load axispay/edge-gateway:1.0.0
+minikube -p axispay image load axispay/auth-service:1.0.0
+```
+
+> The `make` targets are just wrappers. They are easier to type, but they call the same scripts underneath.
 
 Check:
 
@@ -231,6 +326,8 @@ minikube -p axispay image ls | grep axispay
 ```
 
 You should see sixteen lines ending in `:1.0.0`.
+
+> `make build` without `SVC=...` exits with `Usage: make build SVC=payment-service` because this repo treats it as a single-service build target, not a blanket "build everything" command.
 
 ---
 
@@ -261,6 +358,20 @@ Each lab follows the same shape, so once you have done one you know where to fin
 
 ```bash
 make validate-lab LAB=L1.3
+```
+
+Equivalent raw command:
+
+```bash
+bash platform/admin/validate/validate-lab-L1.3.sh
+```
+
+Equivalent vanilla checks:
+
+```bash
+kubectl get pods -A
+kubectl get deploy -A
+kubectl get svc -A
 ```
 
 A lab is not finished when the commands have run. It is finished when the check passes. This is the same discipline the incidents and the final assessment are scored on, so it is worth building early.

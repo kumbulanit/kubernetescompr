@@ -379,7 +379,7 @@ kubectl scale deploy/merchant-service -n axispay-core --replicas=2
 | Restart count climbing steadily | Liveness failing | Check the path. `curl` it from inside with `kubectl exec` |
 | Pod never becomes ready | A dependency really is down | `curl /readyz` and read which check fails |
 | `connection refused` from a probe | Wrong port or the app is not listening yet | Add a startup probe; check the port name matches |
-| `_admin/unready` returns 404 | Older image | `make build` to rebuild |
+| `_admin/unready` returns 404 | Older image | `make build SVC=payment-service` to rebuild |
 
 ---
 

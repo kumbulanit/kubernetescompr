@@ -44,25 +44,32 @@ fi
 printf "%s%sBuilding %d image(s) at tag %s into Minikube profile '%s'%s\n\n" \
   "$BLD" "$BLU" "${#SERVICES[@]}" "$TAG" "$MINIKUBE_PROFILE" "$RST"
 
-# THE critical line. Without it, images are built into the HOST docker daemon
-# and the cluster cannot see them — the pods sit in ErrImageNeverPull and
-# students lose twenty minutes. Re-evaluated here rather than assumed, because
-# each shell is independent.
+# Build to the host Docker daemon, then load each image into the Minikube node
+# runtime. `minikube docker-env` is incompatible with multi-node clusters and
+# would send Docker at the wrong daemon. Loading the built image into Minikube
+# keeps the build portable across driver/runtime combinations.
 if ! minikube -p "${MINIKUBE_PROFILE}" status >/dev/null 2>&1; then
   echo "${RED}Minikube profile '${MINIKUBE_PROFILE}' is not running.${RST}"
   echo "Run: make cluster"; exit 1
 fi
-eval "$(minikube -p "${MINIKUBE_PROFILE}" docker-env)"
-echo "Docker context: ${DOCKER_HOST:-<local>}"
+
+echo "Docker build target: local host daemon"
+echo "Minikube image load target: profile '${MINIKUBE_PROFILE}'"
 echo
 
 build_one() {
   local svc="$1"
+  local image="${IMAGE_NAMESPACE}/${svc}:${TAG}"
   if docker build --quiet \
-       -t "${IMAGE_NAMESPACE}/${svc}:${TAG}" \
-       -f "${REPO_ROOT}/platform/images/${svc}/Dockerfile" \
-       "${REPO_ROOT}" >/dev/null 2>"/tmp/build-${svc}.err"; then
-    printf "  %s✓%s %-22s %s/%s:%s\n" "$GRN" "$RST" "$svc" "$IMAGE_NAMESPACE" "$svc" "$TAG"
+      -t "$image" \
+      -f "${REPO_ROOT}/platform/images/${svc}/Dockerfile" \
+      "${REPO_ROOT}" >/dev/null 2>"/tmp/build-${svc}.err"; then
+    if minikube -p "${MINIKUBE_PROFILE}" image load "$image" >/dev/null 2>&1; then
+     printf "  %s✓%s %-22s %s\n" "$GRN" "$RST" "$svc" "$image"
+    else
+     printf "  %s✗%s %-22s failed to load into Minikube runtime\n" "$RED" "$RST" "$svc"
+     return 1
+    fi
   else
     printf "  %s✗%s %-22s build failed — see /tmp/build-%s.err\n" "$RED" "$RST" "$svc" "$svc"
     tail -15 "/tmp/build-${svc}.err" | sed 's/^/      /'

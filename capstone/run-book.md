@@ -23,7 +23,7 @@ Confirm on **every** machine:
 
 ```bash
 eval $(minikube -p axispay docker-env)
-IMAGE_TAG=2.0.0 make build          # do this the night before, not at 09:00
+IMAGE_TAG=2.0.0 make build-all      # do this the night before, not at 09:00
 minikube -p axispay image ls | grep ':2.0.0' | wc -l    # expect 16
 ```
 

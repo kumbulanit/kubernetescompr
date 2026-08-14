@@ -69,7 +69,7 @@ if [[ "${HAVE:-0}" -ge "${WANT}" ]]; then
 else
   fail "only ${HAVE:-0}/${WANT} images tagged ${IMAGE_TAG_V2}" \
        "every service built at ${IMAGE_TAG_V2}" \
-       "eval \$(minikube -p ${MINIKUBE_PROFILE} docker-env) && IMAGE_TAG=${IMAGE_TAG_V2} make build
+       "eval \$(minikube -p ${MINIKUBE_PROFILE} docker-env) && IMAGE_TAG=${IMAGE_TAG_V2} make build-all
        DO THIS THE NIGHT BEFORE. It is the most common way this session fails."
 fi
 
