@@ -242,4 +242,67 @@ function dFlow(pres, o) {
       color: C.navy, align: "center", margin: 0 });
   L.foot(s, pres); s.addNotes(L.notes(o)); return s;
 }
-module.exports = { dReconcile, dCluster, dOwnership, dService, dPod, dTriage, dFlow, box, arrow };
+
+// --- namespace boundaries ----------------------------------------------------
+function dNamespaces(pres, o) {
+  const s = L.newSlide(pres, true);
+  L.chip(s, o.chip, C.amberD); L.heading(s, o.title, true);
+  s.addShape("roundRect", { x: 0.75, y: 2.0, w: 11.85, h: 3.7, fill: { color: C.navy2 },
+    line: { color: C.teal }, rectRadius: 0.1 });
+  s.addText("CLUSTER", { x: 0.92, y: 2.08, w: 11.5, h: 0.3, fontFace: F.body, fontSize: 10,
+    bold: true, color: C.teal, charSpacing: 1.6, margin: 0 });
+  s.addShape("roundRect", { x: 1.15, y: 2.45, w: 4.95, h: 2.75, fill: { color: C.navy3 },
+    line: { color: C.green }, rectRadius: 0.08 });
+  s.addShape("roundRect", { x: 7.05, y: 2.45, w: 4.95, h: 2.75, fill: { color: C.navy3 },
+    line: { color: C.purple }, rectRadius: 0.08 });
+  s.addText("namespace: team-a", { x: 1.32, y: 2.58, w: 4.6, h: 0.3, fontFace: F.body, fontSize: 10.5,
+    bold: true, color: C.green, charSpacing: 1.0, margin: 0 });
+  s.addText("namespace: team-b", { x: 7.22, y: 2.58, w: 4.6, h: 0.3, fontFace: F.body, fontSize: 10.5,
+    bold: true, color: C.purple, charSpacing: 1.0, margin: 0 });
+  box(s, 1.45, 3.05, 1.7, 0.82, "web-app", "Service", C.teal);
+  box(s, 3.45, 3.05, 1.9, 0.82, "database", "StatefulSet", C.purple);
+  box(s, 1.45, 4.05, 1.7, 0.78, "web-app", "Pod", C.navy2);
+  box(s, 3.45, 4.05, 1.9, 0.78, "database", "Pod", C.navy2);
+  box(s, 7.35, 3.05, 1.7, 0.82, "web-app", "Service", C.teal);
+  box(s, 9.35, 3.05, 1.9, 0.82, "database", "StatefulSet", C.purple);
+  box(s, 7.35, 4.05, 1.7, 0.78, "web-app", "Pod", C.navy2);
+  box(s, 9.35, 4.05, 1.9, 0.78, "database", "Pod", C.navy2);
+  s.addText("same names are legal again here", { x: 7.15, y: 4.9, w: 4.8, h: 0.28, fontFace: F.body,
+    fontSize: 10, italic: true, color: C.codetx, align: "center", margin: 0 });
+  arrow(s, 5.45, 4.42, 3.75, 0, C.amber, "reachable by default");
+  s.addShape("roundRect", { x: 5.2, y: 2.78, w: 1.9, h: 0.66, fill: { color: "5A2A2A" }, line: { color: C.red }, rectRadius: 0.08 });
+  s.addText("NOT a firewall", { x: 5.2, y: 2.78, w: 1.9, h: 0.66, fontFace: F.body, fontSize: 10.5,
+    bold: true, color: C.white, align: "center", valign: "middle", margin: 0 });
+  s.addText("Namespaces scope names, policy and quota — not network reachability.",
+    { x: M, y: 6.25, w: W - 2 * M, h: 0.45, fontFace: F.body, fontSize: 15, bold: true,
+      color: C.amber, align: "center", margin: 0 });
+  L.foot(s, pres); s.addNotes(L.notes(o)); return s;
+}
+
+// --- image / container / pod / node -----------------------------------------
+function dHierarchy(pres, o) {
+  const s = L.newSlide(pres, true);
+  L.chip(s, o.chip, C.amberD); L.heading(s, o.title, true);
+  box(s, 0.85, 3.05, 2.2, 1.1, "IMAGE", "web-app:1.4", C.purple);
+  box(s, 3.45, 3.05, 2.35, 1.1, "CONTAINER", "one running instance", C.green);
+  arrow(s, 3.08, 3.6, 0.3, 0, C.amber, "start");
+  s.addShape("roundRect", { x: 6.3, y: 2.15, w: 6.05, h: 3.3, fill: { color: C.navy2 },
+    line: { color: C.green }, rectRadius: 0.1 });
+  s.addText("NODE  worker-1", { x: 6.5, y: 2.28, w: 5.6, h: 0.3, fontFace: F.body, fontSize: 10.5,
+    bold: true, color: C.green, charSpacing: 1.1, margin: 0 });
+  s.addShape("roundRect", { x: 6.9, y: 2.8, w: 4.85, h: 1.95, fill: { color: C.navy3 },
+    line: { color: C.teal }, rectRadius: 0.09 });
+  s.addText("POD — smallest schedulable unit", { x: 7.08, y: 2.92, w: 4.45, h: 0.28, fontFace: F.body,
+    fontSize: 10.5, bold: true, color: C.teal, charSpacing: 0.8, margin: 0 });
+  box(s, 7.2, 3.28, 2.1, 0.9, "web-app", "container", C.green);
+  box(s, 9.52, 3.28, 1.92, 0.9, "log-shipper", "sidecar", C.purple);
+  s.addText("1 IP · shared localhost · same node", { x: 7.2, y: 4.35, w: 4.2, h: 0.28, fontFace: F.body,
+    fontSize: 10, italic: true, color: C.codetx, align: "center", margin: 0 });
+  arrow(s, 5.88, 3.6, 0.92, 0, C.amber, "wrapped in");
+  s.addText("Kubernetes never schedules an image or container directly. It schedules a Pod onto a Node.",
+    { x: M, y: 6.25, w: W - 2 * M, h: 0.45, fontFace: F.body, fontSize: 15, bold: true,
+      color: C.amber, align: "center", margin: 0 });
+  L.foot(s, pres); s.addNotes(L.notes(o)); return s;
+}
+
+module.exports = { dReconcile, dCluster, dOwnership, dService, dPod, dTriage, dFlow, dNamespaces, dHierarchy, box, arrow };

@@ -309,6 +309,15 @@ function sExplain(pres, o) {
   const s = newSlide(pres);
   chip(s, o.chip, o.chipColour); heading(s, o.title);
   let y = 1.9;
+  // Optional general/universal definition, stated BEFORE the question box and
+  // the AxisPay-specific steps below it — the concept in plain Kubernetes
+  // terms, independent of any one application.
+  if (o.lead) {
+    s.addText(o.lead, { x: M, y, w: W - 2 * M, h: 0.5,
+      fontFace: F.body, fontSize: 13.5, italic: true, color: C.teal,
+      margin: 0, lineSpacing: 17 });
+    y += 0.56;
+  }
   if (o.question) {
     s.addShape("roundRect", { x: M, y, w: W - 2 * M, h: 0.62,
       fill: { color: "EAF1F8" }, line: { color: C.teal }, rectRadius: 0.08 });
