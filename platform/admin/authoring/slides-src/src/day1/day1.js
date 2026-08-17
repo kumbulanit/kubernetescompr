@@ -29,7 +29,7 @@ L.sTitle(p, {
 
 L.sCards(p, {
   chip: "THE WEEK", title: "Five days, one platform",
-  lead: "Nothing is thrown away. Monday's namespaces are Friday's Helm values.",
+  lead: "Kubernetes learning compounds because later controls attach to objects you created earlier. In this course, Monday's namespaces become Friday's Helm values.",
   cards: [
     { badge: "1", colour: C.teal, title: "Foundations", body: "Namespaces, Pods, Deployments, Services.\n\nFour AxisPay services running and talking to each other." },
     { badge: "2", colour: C.green, title: "Reliability", body: "Resources, probes, autoscaling, zero-downtime releases.\n\nThe platform survives Monday morning." },
@@ -78,7 +78,7 @@ L.sSection(p, {
 
 L.sPoints(p, {
   chip: "M1.1 · CONTEXT", title: "Axis Financial Services sells exactly one thing",
-  lead: "One API that a merchant integrates once, which then reaches every card acquirer in the region.",
+  lead: "Many platform businesses hide several provider integrations behind one stable API, so clients integrate once while the platform handles routing, failover and settlement complexity. AxisPay is the concrete example used in this course.",
   points: [
     "A Cape Town merchant selling into Nairobi and London would otherwise need three acquiring relationships, three integrations, three settlement files and three reconciliation processes.",
     "AxisPay collapses that into one integration.",
@@ -96,7 +96,7 @@ L.sPoints(p, {
 
 L.sTable(p, {
   chip: "M1.1 · CONTEXT", title: "Why payments makes every concept matter",
-  lead: "Each business constraint forces you to take a specific Kubernetes topic seriously.",
+  lead: "Operational requirements are what make Kubernetes features necessary rather than academic. AxisPay uses payments as the worked example, but the same mapping exists for any workload with latency, data, security or availability constraints.",
   head: ["Business constraint", "Forces you to care about", "Taught"],
   colW: [4.5, 5.4, 2.2],
   rows: [
@@ -157,12 +157,12 @@ L.sStats(p, {
 
 L.sCards(p, {
   chip: "M1.2 · WHY", title: "Containers solved packaging. Then what?",
-  lead: "Twelve servers, forty containers, one engineer. Every one of these is a manual job.",
+  lead: "Containers package an application and its dependencies into one portable runtime unit, but they do not coordinate many replicas across many hosts. Once a generic web-app must survive node failure, scale out and stay discoverable, you need orchestration.",
   cards: [
-    { badge: "?", colour: C.red, title: "Placement", body: "Which server has capacity right now? Today the answer lives in a spreadsheet that is already out of date." },
-    { badge: "?", colour: C.red, title: "Healing", body: "A container died at 02:14. Who notices, and who restarts it? Currently: a human, eventually." },
-    { badge: "?", colour: C.red, title: "Release", body: "Deploy v2 without downtime, across twelve servers, in the right order, with a way back." },
-    { badge: "?", colour: C.red, title: "Discovery", body: "Which IP is payment-service on today? It changed when the container restarted." },
+    { badge: "?", colour: C.red, title: "Placement", body: "For a vanilla web-app, an orchestrator must choose a node with enough free CPU, memory and required capabilities. In AxisPay's pre-Kubernetes world, that answer lived in a spreadsheet already out of date." },
+    { badge: "?", colour: C.red, title: "Healing", body: "A platform needs a control loop that notices failed processes and recreates them automatically. Without that, AxisPay's 02:14 payment-service death waits for a human." },
+    { badge: "?", colour: C.red, title: "Release", body: "A platform must update many instances gradually, keep capacity during the change and offer rollback. For AxisPay, that means shipping v2 across twelve servers without interrupting authorisations." },
+    { badge: "?", colour: C.red, title: "Discovery", body: "Callers need one stable name even when backends restart and their IPs change. In AxisPay, hard-coding payment-service's current IP breaks at the next reschedule." },
   ],
   obj: "Enumerate the operational gap containers leave behind.",
   time: "6 min",
@@ -174,7 +174,7 @@ L.sCards(p, {
 
 L.sTable(p, {
   chip: "M1.2 · WHY", title: "Orchestration is not virtualisation",
-  lead: "A common conflation, and worth killing early.",
+  lead: "Virtualisation multiplexes operating systems on a host, while orchestration coordinates application workloads across hosts. Most production platforms use both at the same time because they solve different layers of the problem.",
   head: ["", "Virtualisation (VMware, KVM)", "Orchestration (Kubernetes)"],
   colW: [2.7, 4.7, 4.7],
   rows: [
@@ -206,6 +206,7 @@ L.sSection(p, {
 
 L.sTable(p, {
   chip: "M1.3 · DECLARATIVE", title: "Imperative tells HOW. Declarative states WHAT.",
+  lead: "Imperative systems execute the exact steps you issue now. Declarative systems store the target state and let controllers keep reconciling towards it over time.",
   head: ["", "Imperative", "Declarative"],
   colW: [2.4, 5.0, 4.7],
   rows: [
@@ -236,11 +237,12 @@ D.dReconcile(p, {
 L.sExplain(p, {
   chip: "M1.3 · DECLARATIVE",
   title: "How a controller actually closes the gap",
+  lead: "Most Kubernetes controllers watch objects, compare desired with actual state, then make one small corrective API change. For a generic web-app Deployment or AxisPay's payment-service, the loop is the same: level-triggered code that converges from current state even after missed events or restarts.",
   question: "You run `kubectl delete pod`. Nobody tells Kubernetes to create a replacement. So what happens, exactly?",
   steps: [
-    ["OBSERVE", "The ReplicaSet controller holds a local cache of every Pod it owns, kept current by a WATCH — a streaming connection to the API server that pushes changes as they happen. It does not poll.", C.teal],
-    ["DIFF", "It compares spec.replicas (3) with the number of Pods it can actually see (2). This comparison is against CURRENT STATE, not against the delete event — which is why a missed event corrects itself on the next pass.", C.teal],
-    ["ACT", "It creates ONE new Pod object with spec.nodeName EMPTY. That is all it does. It does not choose a node and it does not start a container.", C.green],
+    ["OBSERVE", "For a vanilla web-app Deployment, the ReplicaSet controller keeps a local cache of every Pod it owns via a WATCH — a streaming connection to the API server that pushes changes as they happen. It does not poll.", C.teal],
+    ["DIFF", "It compares spec.replicas (3) with the number of Pods it can actually see (2). This is a CURRENT-STATE comparison, not delete-event logic, which is why a missed event still corrects itself on the next pass.", C.teal],
+    ["ACT", "It creates ONE new Pod object with spec.nodeName EMPTY. For a generic web-app, that is the whole correction; for AxisPay later today, payment-service is repaired exactly the same way.", C.green],
     ["HAND OFF", "The scheduler sees an unscheduled Pod, filters and scores nodes, and writes a node name. The kubelet on that node sees a Pod assigned to it and calls containerd.", C.green],
     ["REPEAT", "The loop runs again. spec now equals status, so it does nothing — and keeps doing nothing, forever, until something changes.", C.amberD],
   ],
@@ -284,7 +286,7 @@ D.dCluster(p, {
   chip: "M1.4 · ARCHITECTURE", title: "The whole cluster on one slide",
   obj: "Establish the component map and the hub-and-spoke communication pattern.",
   time: "8 min",
-  script: "Do not read every box. Instead make the single structural point at the bottom: every arrow points AT the API server.\n\nThe scheduler does not call the kubelet. The controller manager does not call etcd. Nothing calls anything except the API server. Each component watches the API server for things it cares about and writes results back.\n\nThat is what makes Kubernetes extensible: to add behaviour, you write another thing that watches the API server. It is also why kubectl can observe everything that happens — there is only one place anything happens.",
+  script: "In any Kubernetes cluster, control-plane and node agents coordinate indirectly through API objects, not direct peer-to-peer RPC calls. Do not read every box. Instead make the single structural point at the bottom: every arrow points AT the API server.\n\nThe scheduler does not call the kubelet. The controller manager does not call etcd. Nothing calls anything except the API server. Each component watches the API server for things it cares about and writes results back.\n\nThat is what makes Kubernetes extensible: to add behaviour, you write another thing that watches the API server. It is also why kubectl can observe everything that happens — there is only one place anything happens.",
   anim: "Reveal control plane, then node, then the kubectl arrow, then the watch arrows.",
   ask: "etcd holds the entire state of the cluster. What is your backup strategy?",
   answer: "Snapshot etcd regularly and test the restore. Losing etcd means losing every object definition in the cluster. In managed services the provider handles it; on self-managed clusters it is entirely yours. Flag that etcd backup and restore is a CKA exam topic and one of the gaps this course does not cover practically.",
@@ -293,11 +295,12 @@ D.dCluster(p, {
 
 L.sCards(p, {
   chip: "M1.4 · ARCHITECTURE", title: "Control plane — four responsibilities",
+  lead: "The control plane is a set of specialised processes that validate intent, persist state, choose placement and run reconciliation. Each component has one narrow responsibility and coordinates through the API server rather than direct peer-to-peer calls.",
   cards: [
-    { badge: "1", colour: C.teal, title: "kube-apiserver", body: "The only door. Every request — kubectl, controllers, kubelets — passes authentication, then authorisation, then admission control.\n\nStateless. Scale it horizontally." },
-    { badge: "2", colour: C.purple, title: "etcd", body: "The only source of truth. A distributed key-value store holding every object.\n\nIf you back up one thing, back up this. Losing it loses the cluster." },
-    { badge: "3", colour: C.teal, title: "kube-scheduler", body: "Decides WHERE. Filters nodes that cannot run the pod, scores those that can, binds the winner.\n\nIt only writes a node name. It never starts anything." },
-    { badge: "4", colour: C.teal, title: "controller-manager", body: "Runs the reconciliation loops — ReplicaSet, Deployment, Endpoint, Job, Node and about thirty more.\n\nThis is where M1.3 actually lives." },
+    { badge: "1", colour: C.teal, title: "kube-apiserver", body: "In every cluster, the API server is the front door. Requests from kubectl, controllers and kubelets pass authentication, authorisation and admission before any object changes.\n\nA generic web-app apply — or AxisPay's Deployment apply — only talks here." },
+    { badge: "2", colour: C.purple, title: "etcd", body: "In every cluster, etcd is the persistent backing store for API objects and their latest committed state.\n\nAxisPay's Namespaces, Deployments and Services all exist here before anything runs. Lose it and you lose the cluster." },
+    { badge: "3", colour: C.teal, title: "kube-scheduler", body: "For each unscheduled pod, the scheduler filters impossible nodes, scores feasible ones and writes back the chosen node name.\n\nA new web-app pod or payment-service replica follows exactly this path. It never starts anything." },
+    { badge: "4", colour: C.teal, title: "controller-manager", body: "This process runs built-in control loops that watch objects and act when actual state drifts from desired state.\n\nReplicaSet healing for a generic app and AxisPay's endpoint updates both live here." },
   ],
   obj: "Assign one clear responsibility per component.",
   time: "9 min",
@@ -308,10 +311,11 @@ L.sCards(p, {
 
 L.sCards(p, {
   chip: "M1.4 · ARCHITECTURE", title: "Every node — three jobs and three interfaces",
+  lead: "Node components turn Pod specs into running Linux processes, network reachability and attached storage on one machine. Whether the workload is a vanilla web-app or AxisPay's payment-service, Kubernetes keeps this layer pluggable so runtimes, CNIs and storage backends can vary by environment.",
   cards: [
-    { badge: "1", colour: C.green, title: "kubelet", body: "Makes pods real on this node. Watches the API server for pods assigned to it, tells the runtime to start containers, runs your probes, reports status back.\n\nIt is not a container itself." },
-    { badge: "2", colour: C.green, title: "kube-proxy", body: "Programs Service routing into the kernel — iptables or IPVS rules.\n\nThere is no proxy process in the request path. That is why a ClusterIP Service adds almost no latency." },
-    { badge: "3", colour: C.amberD, title: "CRI · CNI · CSI", body: "Three pluggable interfaces: containerd runs containers, Calico gives pods IPs and enforces policy, CSI drivers attach storage.\n\nKubernetes does none of these itself." },
+    { badge: "1", colour: C.green, title: "kubelet", body: "On every node, the kubelet watches for pods bound to that node, asks the runtime to create containers, runs probes and reports status back.\n\nFor a generic nginx pod or AxisPay payment-service replica, this is the agent that makes it real." },
+    { badge: "2", colour: C.green, title: "kube-proxy", body: "For Services, kube-proxy programs dataplane rules into the host kernel, usually with iptables or IPVS.\n\nThat is how a frontend reaches a backend Service, and later how edge-gateway reaches payment-service, with almost no added latency." },
+    { badge: "3", colour: C.amberD, title: "CRI · CNI · CSI", body: "Kubernetes defines interfaces instead of hard-coding one runtime, network stack or storage system. Any cluster needs one implementation of each; in AxisPay, containerd fulfils CRI, Calico fulfils CNI, and CSI drivers attach storage." },
   ],
   obj: "Explain the node and introduce the interface layer.",
   time: "8 min",
@@ -323,7 +327,7 @@ D.dPod(p, {
   chip: "M1.4 · ARCHITECTURE", title: "What actually runs: the Pod",
   obj: "Bridge from cluster components to the unit of work.",
   time: "6 min",
-  script: "This previews M1.6 but belongs here, because it answers 'what does the kubelet actually create?'\n\nThe pause container is worth thirty seconds: it holds the network and IPC namespaces open so your application container can crash and restart without the Pod losing its IP address. Students see pause in crictl output during L1.3's challenge and otherwise find it baffling.",
+  script: "A Pod is Kubernetes' scheduling, networking and lifecycle boundary for one or more cooperating containers. This previews M1.6 but belongs here, because it answers 'what does the kubelet actually create?'\n\nThe pause container is worth thirty seconds: it holds the network and IPC namespaces open so your application container can crash and restart without the Pod losing its IP address. Students see pause in crictl output during L1.3's challenge and otherwise find it baffling.",
   ask: "Why does the Pod exist at all? Why not just schedule containers?",
   answer: "Because some things must share a network namespace and filesystem to work: an app and its log shipper, an app and a proxy sidecar, an app and an init container that prepares its data. The Pod is the smallest unit that can express 'these must live together, on the same node, sharing one IP'.",
 });
@@ -331,12 +335,13 @@ D.dPod(p, {
 L.sExplain(p, {
   chip: "M1.4 · ARCHITECTURE",
   title: "What a Pod actually is, at the Linux level",
+  lead: "A Pod is the smallest deployable unit in Kubernetes: one or more containers scheduled together on one node, sharing a network namespace and optionally shared volumes. For a vanilla web-app or AxisPay's payment-service, the kubelet assembles that abstraction from ordinary Linux primitives rather than a special 'pod' kernel object.",
   question: "There is no such thing as a 'pod' in Linux. So what does the kubelet really create?",
   steps: [
-    ["A network namespace", "Created first, held open by the tiny `pause` container. It owns the IP address. Your containers JOIN it rather than creating their own — which is why they all share one IP and reach each other on localhost.", C.teal],
+    ["A network namespace", "Created first, held open by the tiny `pause` container. It owns the IP address. A generic web-app and its sidecar JOIN it rather than creating their own — which is why they share one IP and reach each other on localhost.", C.teal],
     ["A set of cgroups", "One per container, nested under a pod-level cgroup. This is where requests and limits are written: cpu.weight, cpu.max, memory.max. Tomorrow's resource module is entirely about these files.", C.amberD],
     ["Mount namespaces", "Each container gets its own filesystem view. Shared volumes are bind-mounted into every container that declares them — that is the only filesystem they share.", C.teal],
-    ["Container processes", "containerd starts them via the CRI. Init containers run to completion first, in order; app containers then run concurrently.", C.green],
+    ["Container processes", "containerd starts them via the CRI. Init containers run to completion first, in order; app containers then run concurrently — whether that is a generic web-app or AxisPay's payment-service plus future helpers.", C.green],
   ],
   kicker: "A Pod is a shared network namespace plus a cgroup boundary. Everything else follows from that.",
   obj: "Ground the Pod abstraction in the Linux primitives it is built from.",
@@ -401,13 +406,22 @@ L.sSection(p, {
   script: "Students often treat namespaces as cosmetic. Frame them from the start as the thing NetworkPolicy and RBAC select on.",
 });
 
+D.dNamespaces(p, {
+  chip: "M1.5 · NAMESPACES", title: "Two namespaces, same names, one flat network",
+  obj: "Show generic namespace scoping before the AxisPay segmentation example.",
+  time: "6 min",
+  script: "Start with the generic example: team-a and team-b can both contain a web-app and a database with the same names, because names are qualified by namespace in the API and DNS.\n\nThen point at the arrow. By default, those pods can still reach across namespaces. Name isolation and network isolation are different mechanisms. That distinction is why NetworkPolicy matters on Day 4 and why namespace labels matter on Day 1.",
+  ask: "Why can both namespaces have a Service named web-app without conflict, yet one pod can still call the other namespace's database by FQDN?",
+  answer: "Because names are scoped by namespace, but network reachability is cluster-wide by default. A namespace is the handle policies attach to; it is not itself the firewall.",
+});
+
 L.sCards(p, {
   chip: "M1.5 · NAMESPACES", title: "AxisPay's three zones",
-  lead: "The labels on these namespaces are the API between today and Thursday.",
+  lead: "A namespace is the API scope for object names, RBAC, quotas and policy attachment. It is commonly used to separate environments, teams or trust zones, but by itself it is not a network firewall or a separate cluster.",
   cards: [
-    { badge: "E", colour: C.green, title: "axispay-edge", body: "DMZ. edge-gateway and auth-service.\n\nThe only namespace permitted to receive traffic from outside the cluster.\n\npci-scope: false" },
-    { badge: "C", colour: C.red, title: "axispay-core", body: "The Cardholder Data Environment. payment, merchant, fraud, routing, ledger, customer.\n\nDefault-deny networking from Day 4.\n\npci-scope: true" },
-    { badge: "A", colour: C.purple, title: "axispay-async", body: "Event-driven processing: settlement, notification, audit, reporting.\n\nPopulated from Day 2 onward.\n\npci-scope: true" },
+    { badge: "E", colour: C.green, title: "axispay-edge", body: "A common pattern is an edge namespace for ingress-facing components and controlled north-south entry points. In AxisPay, that is edge-gateway and auth-service.\n\nThe only namespace permitted to receive traffic from outside the cluster.\n\npci-scope: false" },
+    { badge: "C", colour: C.red, title: "axispay-core", body: "A core namespace usually holds the workloads that process sensitive business transactions and therefore get the tightest policy. In AxisPay, this CDE contains payment, merchant, fraud, routing, ledger, customer.\n\nDefault-deny networking from Day 4.\n\npci-scope: true" },
+    { badge: "A", colour: C.purple, title: "axispay-async", body: "A separate async namespace is a common way to isolate batch or event-driven workloads with different scaling and failure patterns. In AxisPay, this zone holds settlement, notification, audit, reporting.\n\nPopulated from Day 2 onward.\n\npci-scope: true" },
   ],
   obj: "Present the segmentation design and its rationale.",
   time: "6 min",
@@ -435,7 +449,7 @@ L.sBanner(p, {
 
 L.sTable(p, {
   chip: "M1.5 · NAMESPACES", title: "Namespaced or cluster-scoped?",
-  lead: "Getting this wrong on Day 5 is how people accidentally grant cluster-admin.",
+  lead: "Some Kubernetes objects live inside a namespace, so `web-app` can exist once in team-a and again in team-b. Others are cluster-scoped because they describe shared infrastructure, global policy or the namespace boundary itself.",
   head: ["Namespaced (exist inside a namespace)", "Cluster-scoped (exist once, globally)"],
   colW: [6.05, 6.05],
   rows: [
@@ -477,15 +491,24 @@ L.sSection(p, {
   script: "The plan is to show students the WRONG way on purpose, let them feel the gap, then fix it in M1.7. That contrast is far more durable than an assertion.",
 });
 
+D.dHierarchy(p, {
+  chip: "M1.6 · PODS", title: "Image → container → Pod → Node",
+  obj: "Separate the artifact you build from the workload Kubernetes actually schedules.",
+  time: "6 min",
+  script: "Walk left to right. An image is just a packaged filesystem plus metadata. A container is one running instance of that image. Kubernetes does not schedule either directly; it schedules a Pod, which may hold one or more containers, onto one node.\n\nUse the generic web-app plus log-shipper example first, then tie it to AxisPay: payment-service is built as an image, started as a container, but owned and restarted only as part of a Pod.",
+  ask: "If two containers come from the same image, are they the same thing in Kubernetes?",
+  answer: "No. The image is the reusable artifact, each container is one runtime instance, and Kubernetes reasons about them through the Pod that groups them on one node.",
+});
+
 L.sTable(p, {
   chip: "M1.6 · PODS", title: "Every object has the same four fields",
-  lead: "Learn this shape once and every manifest this week is readable.",
+  lead: "Most Kubernetes manifests share the same envelope: apiVersion, kind, metadata and spec. A generic Pod, Deployment or Service reads this way before any controller acts; later controllers add status so you can separate your intent from the cluster's observation.",
   head: ["Field", "Means", "Example"],
   colW: [2.5, 5.3, 4.3],
   rows: [
     ["apiVersion", "Which API group and version this object belongs to", "v1  ·  apps/v1"],
     ["kind", "What sort of object", "Pod  ·  Deployment  ·  Service"],
-    ["metadata", "Name, namespace, labels, annotations", "name: payment-service"],
+    ["metadata", "Name, namespace, labels, annotations", "name: web-app  ·  namespace: team-a"],
     ["spec", "DESIRED STATE — what you want. You write this.", "replicas: 3"],
     ["status", "ACTUAL STATE — what is. A controller writes this.", "readyReplicas: 2"],
   ],
@@ -531,13 +554,13 @@ L.sMistakes(p, {
     ["Using a bare Pod in production", "It dies. Nothing brings it back.", "Always use a controller — Deployment, StatefulSet, Job"],
     ["Writing logs to a file in the container", "kubectl logs is empty; logs vanish on restart", "Log JSON to stdout. The kubelet captures it."],
     ["Running as root", "Container escape becomes host compromise", "USER 10001 in the image AND runAsNonRoot in the pod spec"],
-    ["Assuming logs exist after a crash", "'container is waiting to start'", "kubectl logs --previous, or kubectl describe for events"],
-    ["Using :latest", "Nobody can say what is running", "Pin an immutable tag or a digest"],
-    ["One pod, many unrelated processes", "You cannot scale or restart them independently", "One concern per container; use sidecars deliberately"],
+    ["Assuming logs exist after a crash", "payment-service never started; logs say nothing", "kubectl describe for events, or logs --previous if it DID start"],
+    ["Using :latest", "Today's payment-service and tomorrow's replacement may differ", "Pin an immutable tag or a digest"],
+    ["One pod, many unrelated processes", "payment-service and fraud-service cannot scale independently", "One concern per container; use sidecars deliberately"],
   ],
   obj: "Pre-empt the errors students are about to make.",
   time: "6 min",
-  script: "Row 2 deserves a moment. It is the most common mistake made by people coming from VMs, where writing to /var/log is correct. In a container it produces logs nobody can read and that disappear when the pod restarts.\n\nRow 4 is the one they will hit in about two hours, during INC-1. Plant it now so the memory is available when they need it.",
+  script: "Most of these mistakes come from treating a pod like a small VM instead of an ephemeral workload boundary. Row 2 deserves a moment. It is the most common mistake made by people coming from VMs, where writing to /var/log is correct. In a container it produces logs nobody can read and that disappear when the pod restarts.\n\nRow 4 is the one they will hit in about two hours, during INC-1. Plant it now so the memory is available when they need it.",
 });
 
 L.sLab(p, {
@@ -650,7 +673,7 @@ D.dService(p, {
   chip: "M1.8 · SERVICES", title: "Service → EndpointSlice → kube-proxy",
   obj: "Establish the selection chain and the direction of causation.",
   time: "10 min",
-  script: "The direction of causation is what people get wrong, so say it twice: a Service does not CONTAIN pods. It SELECTS them, continuously, by label.\n\nThe endpoint controller evaluates your selector and writes the result into an EndpointSlice. kube-proxy watches EndpointSlices and programs iptables or IPVS rules into the kernel.\n\nNote what is NOT in the request path: there is no proxy process. It is kernel rules. That is why a ClusterIP Service adds almost no latency, and it is the foundation of Thursday's networking module.\n\nPoint at the red box. Change a pod's labels and it silently drops out. Nothing errors.",
+  script: "A Service is a stable virtual IP and DNS name backed by a live label selection, not a container that forwards traffic. The direction of causation is what people get wrong, so say it twice: a Service does not CONTAIN pods. It SELECTS them, continuously, by label.\n\nThe endpoint controller evaluates your selector and writes the result into an EndpointSlice. kube-proxy watches EndpointSlices and programs iptables or IPVS rules into the kernel.\n\nNote what is NOT in the request path: there is no proxy process. It is kernel rules. That is why a ClusterIP Service adds almost no latency, and it is the foundation of Thursday's networking module.\n\nPoint at the red box. Change a pod's labels and it silently drops out. Nothing errors.",
   ask: "kubectl get svc shows a healthy Service with a ClusterIP. Requests fail. What is the FIRST thing you check?",
   answer: "The EndpointSlice — kubectl get endpointslice -n <ns> -l kubernetes.io/service-name=<svc>. A Service always has an IP whether or not its selector matches anything. 'No endpoints' is the single most common Service bug, and get svc will never tell you.",
   callout: "This becomes INC-4 on Thursday, under time pressure. Students who write it on their cheat sheet today find it in two minutes then.",
@@ -659,10 +682,11 @@ D.dService(p, {
 L.sExplain(p, {
   chip: "M1.8 · SERVICES",
   title: "How a Service actually routes one packet",
+  lead: "A Service gives clients a stable virtual IP and DNS name while backing pods change underneath. For a generic frontend→api call or AxisPay's edge-gateway→payment-service call, it selects ready endpoints and relies on node-level dataplane rules rather than a proxy container in every request path.",
   question: "edge-gateway calls http://payment-service:8080. Follow the packet.",
   steps: [
-    ["Name to ClusterIP", "The pod's /etc/resolv.conf points at CoreDNS. CoreDNS answers with the Service's ClusterIP — 10.96.14.22. That IP belongs to nothing: no interface anywhere in the cluster has it.", C.purple],
-    ["Connect to a virtual IP", "The pod opens a TCP connection to 10.96.14.22:8080. The packet leaves the pod's network namespace and hits the node's kernel.", C.teal],
+    ["Name to ClusterIP", "A generic frontend pod asks CoreDNS for `api` and gets the Service's ClusterIP — perhaps 10.96.14.22. That IP belongs to nothing: no interface anywhere in the cluster has it.", C.purple],
+    ["Connect to a virtual IP", "The frontend opens a TCP connection to 10.96.14.22:8080. The packet leaves the Pod's network namespace and hits the node's kernel. AxisPay's edge-gateway does the same when it calls payment-service.", C.teal],
     ["Kernel DNAT", "iptables (or IPVS) rules programmed by kube-proxy match the destination and REWRITE it to one real pod IP — 10.244.2.7:8080 — chosen statistically among ready endpoints.", C.green],
     ["Delivered", "The packet is routed to that pod by the CNI, across the node boundary if needed. The reply is un-rewritten on the way back, so the client never learns which pod answered.", C.green],
   ],
@@ -676,13 +700,13 @@ L.sExplain(p, {
 
 L.sTable(p, {
   chip: "M1.8 · SERVICES", title: "DNS — the minimum you need today",
-  lead: "How it actually works — CoreDNS, search domains, ndots — is Thursday, M4.3.",
+  lead: "Every Service gets DNS records inside the cluster. Search domains resolve short names only within the caller's namespace, so a generic frontend can call `api` locally, while cross-namespace calls need `service.namespace` or the full FQDN.",
   head: ["Form", "Resolves from", "Use it when"],
   colW: [4.6, 3.5, 4.0],
   rows: [
-    ["payment-service", "Same namespace only", "Quick manual testing"],
-    ["payment-service.axispay-core", "Anywhere in the cluster", "Readable cross-namespace calls"],
-    ["payment-service.axispay-core.svc.cluster.local", "Anywhere. Fully qualified.", "Every manifest in this repo"],
+    ["api", "Same namespace only", "A frontend calling a backend beside it"],
+    ["api.backend", "Anywhere in the cluster", "Readable cross-namespace calls"],
+    ["payment-service.axispay-core.svc.cluster.local", "Anywhere. Fully qualified.", "The explicit form AxisPay uses in manifests"],
   ],
   rowH: 0.62,
   obj: "Give the fact now; the mechanism comes on Day 4.",
@@ -811,7 +835,7 @@ D.dTriage(p, {
   chip: "M1.9 · TRIAGE", title: "The 6-step loop",
   obj: "Give students a repeatable method they will use eight more times this week.",
   time: "8 min",
-  script: "Work outside-in. Steps 1 to 3 use only the control plane and ALWAYS work. Step 4 needs a container that started at least once.\n\nThat ordering matters. If you jump to kubectl logs first and get 'container is waiting to start', you have learned almost nothing and burned a minute you did not have. In about twenty minutes, that is exactly what will happen to about half of you.\n\nThe last two boxes are what separate an engineer from someone who got lucky. VERIFY: a fix is not a fix until you have proved it. And then: what would have caught this before a merchant phoned?",
+  script: "In Kubernetes, debug outside-in: desired state, observed state, cluster signals, then application internals. Work outside-in. Steps 1 to 3 use only the control plane and ALWAYS work. Step 4 needs a container that started at least once.\n\nThat ordering matters. If you jump to kubectl logs first and get 'container is waiting to start', you have learned almost nothing and burned a minute you did not have. In about twenty minutes, that is exactly what will happen to about half of you.\n\nThe last two boxes are what separate an engineer from someone who got lucky. VERIFY: a fix is not a fix until you have proved it. And then: what would have caught this before a merchant phoned?",
   callout: "This loop is on the back of the Day 1 cheat sheet. It is the most portable thing anyone takes away from this course.",
   ask: "Why is 'what changed?' step 6 and not step 1?",
   answer: "Because you need to know what is actually broken before change history is useful. Ninety percent of the time it IS the recent change — but starting there biases you towards the last deploy and makes you blind to everything else. Accept the counter-argument too: experienced engineers often check it early. The point is to check it deliberately, not reflexively.",
@@ -819,6 +843,7 @@ D.dTriage(p, {
 
 L.sTable(p, {
   chip: "M1.9 · TRIAGE", title: "Reading a pod status — what it is actually telling you",
+  lead: "Pod status is a compressed view of where startup or serving failed: scheduling, image pull, container start, probe success or shutdown. Read it correctly for a generic web-app or AxisPay's payment-service and it tells you which subsystem to inspect first and which commands will be useless.",
   head: ["Status", "Container started?", "First move"],
   colW: [3.5, 3.0, 5.6],
   rows: [
@@ -835,6 +860,26 @@ L.sTable(p, {
   time: "6 min",
   script: "Rows 3 and 4 are the pair that matters, and they are the most confused pair in Kubernetes.\n\nImagePullBackOff: the container NEVER started. RESTARTS is 0. There are no logs because there is no container. \n\nCrashLoopBackOff: the container started and exited, repeatedly. RESTARTS climbs. There ARE logs, and --previous is how you read the ones from the run that failed.\n\nThey will use this table in fifteen minutes, and again tomorrow for INC-2 — which is a CrashLoopBackOff caused by an OOM kill, deliberately paired against today's incident.",
   tip: "Teach kubectl get events --sort-by='.lastTimestamp' | tail -20 now. It is often faster than describing pods one at a time, and it shows the ORDER things happened in.",
+});
+
+L.sTable(p, {
+  chip: "M1.9 · TRIAGE", title: "A node goes NotReady — five conditions and where each one comes from",
+  lead: "Node conditions are health signals published by the kubelet, not application errors from one pod. Whether several generic apps fail together or AxisPay loses multiple services on one worker, NotReady or pressure often means many workload symptoms share one host-level cause.",
+  head: ["Condition", "What it means", "First move"],
+  colW: [3.5, 3.0, 5.6],
+  rows: [
+    ["Ready=False", "Kubelet cannot report healthy state — often API-server reachability loss or an unresponsive CRI/runtime.", "kubectl get nodes -o wide → describe node <name>. Then SSH / minikube ssh: journalctl -u kubelet -f and systemctl status containerd."],
+    ["MemoryPressure", "Node is short on RAM. Kubelet starts evicting pods by QoS and priority, lowest protection first.", "describe node for pressure + evictions. Then find the hog: top, cgroup metrics, or a pod with no limits."],
+    ["DiskPressure", "Ephemeral storage or image filesystem is nearly full — commonly container logs or a runaway image cache.", "describe node, then inspect /var/lib/containerd, image usage, and oversized pod logs before scheduling stalls spread."],
+    ["PIDPressure", "Node has nearly exhausted process IDs — usually a fork bomb or a leaking process tree inside one workload.", "describe node, then inspect process counts on-host and isolate the pod spawning processes faster than they exit."],
+    ["NetworkUnavailable", "Node networking is not configured yet. Rare after CNI settles; mostly seen during bootstrap or plugin failure.", "Check node Conditions and CNI daemonset / events. Treat as node plumbing, not an application bug."],
+  ],
+  rowH: 0.56,
+  obj: "Teach that NotReady is a node-health problem with its own conditions, commands, and failure domains.",
+  time: "7 min",
+  script: "This is the node-level version of the previous table: when a node goes NotReady, pods are often only the SYMPTOM. In AxisPay production, start with three commands every time: kubectl get nodes -o wide, kubectl describe node <name>, then drill into kubelet logs on the host.\n\nReady=False is the important split: either kubelet cannot reach the API server, or kubelet can run but cannot talk to the container runtime. The pressure conditions are different again: MemoryPressure and DiskPressure change scheduling and trigger evictions; PIDPressure usually means one workload is creating processes faster than the node can reclaim them.\n\nNetworkUnavailable is the odd one out: it usually appears while the node is bootstrapping or the CNI is unhealthy, not because your payment-service image is wrong. The operational lesson is simple: when the node is sick, stop staring at pod YAML and go look at kubelet, runtime, and host resources.",
+  ask: "If kubectl get pods shows five different apps failing on one worker at the same time, what do you check before opening five pod investigations?",
+  answer: "The node. Run kubectl get nodes -o wide and kubectl describe node <name> first, because one NotReady or pressure condition can explain all five app symptoms at once.",
 });
 
 L.sBanner(p, {

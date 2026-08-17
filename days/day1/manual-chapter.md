@@ -964,6 +964,924 @@ Services are pure configuration and trivially reproducible from manifests. The o
 
 ---
 
+# 1.7 Java Application Lifecycle in Kubernetes
+
+## 1. What it is
+
+This is the lifecycle of a Java service **inside** a Kubernetes Pod: image starts, the JVM boots, Spring Boot builds its application context, probes decide whether the Pod may receive traffic, and later the kubelet asks it to terminate.
+
+For a Spring Boot service on JDK 17, that lifecycle is rarely instant. Class loading, bean creation, database pool initialisation and cache warm-up make Java behave very differently from a tiny Go binary that starts in 200ms.
+
+## 2. Why it exists
+
+Kubernetes only sees a container process. It does **not** understand the internal states of a JVM application unless you expose them through probes and shutdown behaviour.
+
+That gap matters because the platform makes traffic and restart decisions long before a human is looking. If Kubernetes thinks a process is healthy too early, traffic arrives before Spring has finished starting. If Kubernetes kills a Pod too fast, in-flight requests die halfway through card authorisation.
+
+## 3. The business problem
+
+AxisPay learned this the hard way during a Thursday afternoon rolling update of `payment-service`. The old Pods were serving long-running card authorisations to a downstream issuer simulator. Each request held a database connection from HikariCP while the authorisation result and ledger reservation were being coordinated.
+
+The Deployment used the default `terminationGracePeriodSeconds: 30`. The application had no graceful shutdown enabled, and the `preStop` hook slept for 10 seconds in the hope that traffic would drain. It did not. Endpoint removal, keep-alive clients and JVM shutdown raced each other. At 30 seconds the kubelet sent `SIGKILL`. Two Pods died with requests still active, four authorisations were retried by merchants, and one merchant saw a temporary double-hold on a customer card.
+
+The lesson was not "Java is slow". The lesson was that Kubernetes termination timing must be designed around **application reality**, not defaults.
+
+## 4. How it works
+
+Startup and shutdown are separate problems.
+
+### Startup
+
+```
+kubelet starts container
+JVM starts PID 1
+Spring Boot loads classes and creates beans
+connection pools initialise
+embedded Tomcat/Netty binds ports
+startupProbe succeeds
+readinessProbe succeeds
+Service starts sending traffic
+```
+
+For Spring Boot applications, a `startupProbe` is usually the missing control. Many AxisPay services take 30–90 seconds to start after a cold node boot because they load hundreds of classes, build the Spring context, connect to PostgreSQL and register Actuator health indicators.
+
+Without a `startupProbe`, a liveness probe starts judging the container too early. Kubernetes then kills a perfectly normal slow-starting JVM and turns startup delay into `CrashLoopBackOff`.
+
+### Shutdown
+
+```
+pod marked Terminating
+terminationGracePeriodSeconds countdown starts
+kubelet runs preStop hook
+kubelet sends SIGTERM to PID 1
+JVM begins shutdown sequence
+registered shutdown hooks run
+Spring Boot stops accepting new work and drains existing work
+when grace expires, kubelet sends SIGKILL
+```
+
+A critical nuance: the JVM does not magically know how to drain HTTP requests or finish business transactions. `SIGTERM` starts JVM shutdown, but **graceful application shutdown exists only if the app registers shutdown hooks and cooperates**.
+
+Spring Boot gives you that cooperation when configured correctly:
+
+```properties
+server.shutdown=graceful
+spring.lifecycle.timeout-per-shutdown-phase=60s
+```
+
+The first tells the embedded server to stop accepting new requests and wait for active ones to finish. The second sets how long Spring should wait for beans to stop cleanly. If your Pod's `terminationGracePeriodSeconds` is 30 but Spring is configured to wait 60, Kubernetes wins. The process is killed at 30.
+
+## 5. Internal architecture
+
+| Layer | Responsibility | Failure mode if misconfigured |
+|---|---|---|
+| kubelet | Starts containers, runs probes, sends termination signals | Kills a slow-starting or slow-stopping app too early |
+| `startupProbe` | Says "do not evaluate liveness yet" | Normal boot looks like a crash |
+| `readinessProbe` | Says whether the Pod may receive traffic | Traffic sent before app is really usable |
+| `livenessProbe` | Says whether the process should be restarted | Probe loop turns transient slowness into restarts |
+| JVM | Runs the process and shutdown hooks | No business-level draining by default |
+| Spring Boot | Builds the app context and coordinates graceful stop | Long startup, partial shutdown, hanging beans |
+| Connection pools / worker pools | Hold in-flight work during shutdown | Transactions terminated mid-flight |
+
+## 6. Component interactions
+
+A safe startup for `payment-service` looks like this:
+
+```yaml
+startupProbe:
+  httpGet:
+    path: /startupz
+    port: 8080
+  failureThreshold: 30
+  periodSeconds: 3
+readinessProbe:
+  httpGet:
+    path: /readyz
+    port: 8080
+  periodSeconds: 5
+livenessProbe:
+  httpGet:
+    path: /healthz
+    port: 8080
+  periodSeconds: 10
+terminationGracePeriodSeconds: 90
+```
+
+That gives Spring Boot up to 90 seconds to initialise before liveness is allowed to act, and up to 90 seconds to drain at shutdown.
+
+The shutdown race is the harder part:
+
+1. Pod is removed from the Service endpoint set only after readiness fails and controllers propagate the change.
+2. Existing clients may keep connections open for several seconds.
+3. `preStop` consumes time **inside** `terminationGracePeriodSeconds`.
+4. `SIGTERM` reaches the JVM only after the hook phase begins.
+5. If the grace period expires first, `SIGKILL` ends the discussion.
+
+This is why "sleep 30" in `preStop` is not a design. It is wishful thinking.
+
+## 7. Enterprise example
+
+In production, AxisPay's `auth-service`, `payment-service` and `core-service` all expose three Actuator-backed endpoints: `/startupz`, `/readyz` and `/healthz`. Their Deployments deliberately set a longer grace period than the application shutdown timeout.
+
+| Service | Cold start | Shutdown timeout | Pod grace |
+|---|---|---|---|
+| `auth-service` | 20–35s | 20s | 45s |
+| `payment-service` | 45–75s | 60s | 90s |
+| `core-service` | 60–90s | 75s | 120s |
+
+The numbers are boring by design. They come from measurement, not folklore.
+
+## 8. Real-world analogy
+
+A restaurant opening and closing. Turning the lights on does not mean the kitchen is ready; chefs still need prep time. At closing time, locking the front door must happen **before** you throw out the customers already eating.
+
+**Where it breaks:** restaurants do not have an external control loop that will forcibly bulldoze the building after 30 seconds if the staff are still cleaning up.
+
+## 9. Best practices
+
+| Practice | Reason |
+|---|---|
+| Add a `startupProbe` to every non-trivial Spring Boot service | Prevents liveness from killing slow but healthy startups |
+| Keep readiness and liveness semantically different | Readiness answers "can serve?"; liveness answers "should restart?" |
+| Enable Spring graceful shutdown | Gives the JVM an application-level drain path |
+| Set `terminationGracePeriodSeconds` above the longest legitimate request | Default 30s is often too short for payment flows |
+| Make `preStop` fail readiness first, then wait briefly | Stops new traffic before SIGTERM drainage begins |
+| Measure startup and drain times per service | Java services differ materially; copy-paste values are dangerous |
+
+## 10. Common mistakes
+
+| Mistake | Symptom |
+|---|---|
+| No `startupProbe` on a 60-second Spring Boot app | `CrashLoopBackOff` during node restarts or new rollouts |
+| Same endpoint for readiness and liveness | Healthy-but-dependent apps get restarted instead of drained |
+| `terminationGracePeriodSeconds` left at default 30 | In-flight payments cut off during rolling updates |
+| Long `preStop` sleep with no readiness change | Pod keeps receiving traffic while supposedly draining |
+| Assuming SIGTERM is enough | Process exits, but business work is not finished safely |
+
+## 11. Security considerations
+
+| Threat | Control | Residual risk |
+|---|---|---|
+| Terminating pods still accept traffic and expose stale auth decisions | Fail readiness first and drain quickly | Existing keep-alive sessions may persist briefly |
+| Probes expose internal state too broadly | Expose only minimal health endpoints; protect richer Actuator endpoints | Internal callers may still fingerprint service behaviour |
+| Shutdown hooks log sensitive state during failure | Review exception logging paths | Emergency diagnostics still risk oversharing |
+
+## 12. Performance considerations
+
+- JVM startup time is workload-specific. Classpath size, reflection-heavy frameworks, TLS initialisation and connection pool warm-up all matter.
+- Aggressive liveness probes create self-inflicted load during startup by opening many failing connections.
+- Graceful shutdown increases rollout duration because old Pods remain alive longer; plan capacity accordingly.
+- A service that drains for 90 seconds but runs with `maxUnavailable: 1` needs enough headroom for both old and new replicas during deployment.
+
+## 13. High availability
+
+High availability is not just replica count. A three-replica Deployment with bad lifecycle settings can take all three replicas out one by one during a rollout.
+
+Safe HA for Java services needs:
+
+- multiple replicas
+- readiness probes that remove broken Pods quickly
+- startup probes that protect slow boots
+- graceful shutdown so rolling updates do not sever requests
+- surge capacity during updates
+
+## 14. Disaster recovery
+
+Lifecycle settings are configuration, so recovery is straightforward **if** they live in Git. The DR risk is not losing the settings; it is forgetting them during a rebuild and reintroducing a latent outage pattern.
+
+For regulated services such as `core-service`, lifecycle values should be part of the platform baseline and peer-reviewed like any other control.
+
+## 15. Monitoring
+
+| Signal | Why | Alert at |
+|---|---|---|
+| Pod startup duration | Detects regression after a release | > historical p95 by 50% |
+| `kube_pod_container_status_restarts_total` | Startup probe/liveness misdesign shows here first | Sustained increase |
+| Termination duration from app logs | Proves whether drain fits grace | > 80% of grace budget |
+| Readiness flaps during rollout | Pods becoming ready too early or too late | Any sustained flapping |
+| HTTP 5xx during Deployment updates | The user-visible symptom of bad shutdown | Spike during rollout |
+
+## 16. Troubleshooting
+
+| Symptom | Likely cause | Command | Fix |
+|---|---|---|---|
+| `CrashLoopBackOff` only on fresh nodes | JVM startup exceeds liveness budget | `kubectl describe pod`; `kubectl logs --previous` | Add or relax `startupProbe` |
+| Pod stuck `Running 0/1` for 2 minutes then becomes healthy | Normal slow start, readiness tuned too tightly | `kubectl describe pod` → probe events | Increase readiness thresholds; add `startupProbe` |
+| Rolling update causes 502s | Pod exits before requests drain | `kubectl describe pod`; app shutdown logs | Enable graceful shutdown; raise grace period |
+| Pod sits `Terminating` until force-killed | Spring timeout longer than Pod grace | Compare app config vs manifest | Align `spring.lifecycle...` with `terminationGracePeriodSeconds` |
+| `preStop` runs but traffic still arrives | Readiness never failed or endpoint propagation lag | `kubectl get endpointslice -w` | Fail readiness first, then wait briefly |
+
+## Interview questions
+
+1. **Why do Spring Boot services often need a `startupProbe` when a Node.js or Go service might not?**
+   *Because the JVM and Spring context can take tens of seconds to initialise. Without a `startupProbe`, Kubernetes begins liveness checks during normal boot and mistakes slow startup for failure.*
+2. **What does `server.shutdown=graceful` actually change?**
+   *It tells Spring Boot's embedded server to stop accepting new requests and wait for active ones to complete during shutdown, instead of terminating abruptly. It is application-level cooperation layered on top of SIGTERM.*
+3. **Why is `terminationGracePeriodSeconds` not just a nice-to-have for payment workloads?**
+   *Because card authorisations and ledger writes are real in-flight financial operations. If the kubelet sends SIGKILL before they drain, you create retries, duplicate holds, inconsistent state and merchant-visible errors.*
+4. **Explain the relationship between `preStop`, SIGTERM and the grace period.** *(senior)*
+   *The grace-period timer starts first. `preStop` runs inside that budget. SIGTERM and shutdown hooks then have only the remaining time. If the whole sequence exceeds the budget, the kubelet sends SIGKILL. Therefore `preStop` must be short and purposeful, not a blind sleep.*
+5. **How would you choose probe timings for a Java service?** *(senior)*
+   *Measure real cold-start and warm-start times, then set `startupProbe` to cover the worst legitimate startup. Make readiness reflect business readiness, not just port-open. Make liveness conservative and aimed at unrecoverable stuck states, not dependency blips.*
+
+---
+
+# 1.8 Init Containers and Dependency Management
+
+## 1. What it is
+
+An init container is a container that runs **before** the main application containers in a Pod. It must complete successfully before the next init container, and eventually the main application, can start.
+
+Init containers exist to do setup work that should not stay running for the whole life of the Pod.
+
+## 2. Why it exists
+
+Java microservices usually assume the world already exists: the database is reachable, schemas are current, trust stores are present, and configuration files are mounted. In Kubernetes that assumption is often false, especially during a fresh cluster build or after a dependency restart.
+
+If the main Spring Boot container is given those responsibilities directly, it becomes harder to reason about failure. You see a `CrashLoopBackOff`, but you do not know whether the app code is broken or merely waiting for PostgreSQL.
+
+Init containers separate preparation from serving.
+
+## 3. The business problem
+
+AxisPay's `core-service` owns the ledger tables used for reservations, postings and reversals. On a new environment build, the service must not start serving traffic until the schema exists and is the expected version.
+
+A team once embedded Flyway migration logic inside the main application startup and also wrapped the container entrypoint with a home-grown `wait-for-it.sh`. When PostgreSQL was slow to recover, the shell loop masked the real problem for 14 minutes. When Flyway later failed on a locking error, the container crashed without a clean audit trail. Operations saw only a Java stack trace and assumed the application release was bad.
+
+The fix was to move dependency waiting and schema migration into explicit init containers, where Kubernetes can show their state directly.
+
+## 4. How it works
+
+Init containers run in order:
+
+```
+init container 1  -> must exit 0
+init container 2  -> must exit 0
+application       -> may now start
+```
+
+If any init container fails, the Pod does not move on. Kubernetes retries according to the Pod restart policy, and `kubectl describe pod` shows exactly which init container is blocked.
+
+A realistic AxisPay example for `core-service`:
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: core-service
+  namespace: axispay-core
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: core-service
+  template:
+    metadata:
+      labels:
+        app: core-service
+    spec:
+      initContainers:
+        - name: wait-for-postgres
+          image: postgres:16
+          command:
+            - sh
+            - -c
+            - |
+              until pg_isready -h ledger-postgres.axispay-data.svc.cluster.local -p 5432 -U "$DB_USER"; do
+                echo "waiting for ledger database"
+                sleep 2
+              done
+          env:
+            - name: DB_USER
+              valueFrom:
+                secretKeyRef:
+                  name: core-db-credentials
+                  key: username
+        - name: migrate-ledger-schema
+          image: flyway/flyway:10.17.0
+          args:
+            - -url=jdbc:postgresql://ledger-postgres.axispay-data.svc.cluster.local:5432/axispay_core
+            - -user=$(DB_USER)
+            - -password=$(DB_PASSWORD)
+            - -connectRetries=30
+            - migrate
+          env:
+            - name: DB_USER
+              valueFrom:
+                secretKeyRef:
+                  name: core-db-credentials
+                  key: username
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: core-db-credentials
+                  key: password
+          volumeMounts:
+            - name: ledger-migrations
+              mountPath: /flyway/sql
+      containers:
+        - name: core-service
+          image: registry.axispay.internal/core-service:1.0.0
+          ports:
+            - containerPort: 8080
+      volumes:
+        - name: ledger-migrations
+          configMap:
+            name: core-ledger-migrations
+```
+
+The main application starts only after PostgreSQL answers and Flyway exits 0.
+
+## 5. Internal architecture
+
+| Element | Responsibility | Operational value |
+|---|---|---|
+| init container image | Holds tools not needed in the app image | Keeps app image smaller and cleaner |
+| sequential ordering | Enforces dependency order | Prevents race conditions during startup |
+| exit code | Tells Kubernetes success or failure | Makes diagnosis explicit |
+| shared Pod network namespace | Lets init containers reach cluster Services normally | No special networking required |
+| shared volumes | Pass files or scripts to the main container | Clean hand-off |
+
+## 6. Component interactions
+
+```
+kubelet          starts Pod sandbox
+kubelet          runs init container 1: wait-for-postgres
+PostgreSQL       accepts connections
+init 1           exits 0
+kubelet          runs init container 2: Flyway migrate
+Flyway           creates/updates ledger tables
+init 2           exits 0
+kubelet          starts main Spring Boot container
+readinessProbe   eventually passes
+Service          adds pod as endpoint
+```
+
+The important guarantee is ordering. Kubernetes will never run `migrate-ledger-schema` before `wait-for-postgres` succeeds, and will never start `core-service` while a migration is still running.
+
+## 7. Enterprise example
+
+AxisPay uses init containers in three repeatable patterns:
+
+| Service | Init responsibility | Why |
+|---|---|---|
+| `core-service` | Flyway schema migration | Ledger tables must exist before posting money |
+| `payment-service` | Fetch merchant routing rules from internal config store | Faster main-container startup; clearer failure scope |
+| `merchant-service` | Wait for RabbitMQ and pre-create webhook dead-letter queues | Prevents consumer startup against partial messaging state |
+
+This pattern also makes audits easier. A failed schema migration is visible as an infrastructure-prep failure, not buried in generic application logs.
+
+## 8. Real-world analogy
+
+A theatre opening for a performance. The audience cannot enter until the cleaners finish, the stage lights are tested and the ticket scanners are online. Those setup tasks happen first, in order, and none of them should still be "running forever" once the show begins.
+
+**Where it breaks:** in a theatre, setup staff can improvise around a failure. Init containers cannot; any failure stops progress completely.
+
+## 9. Best practices
+
+| Practice | Reason |
+|---|---|
+| Keep init containers single-purpose | Easier to debug and safer to rerun |
+| Use purpose-built images such as `postgres` or `flyway` | Avoid stuffing admin tools into the app image |
+| Fail fast with clear log output | Operators should know *which* dependency is missing |
+| Put schema migration ownership with the service that owns the schema | Prevents hidden cross-service coupling |
+| Prefer init containers over shell wrappers in `command:` | Kubernetes can observe init state directly |
+| Set resource requests on init containers too | Large migrations can starve small nodes |
+
+## 10. Common mistakes
+
+| Mistake | Symptom |
+|---|---|
+| Using `wait-for-it` inside the main container entrypoint | App logs are noisy and failure scope is unclear |
+| Putting infinite wait loops in init containers | Pods appear hung forever with no escalation path |
+| Reusing the application image for migrations | Bloated image, wider attack surface, slower pulls |
+| Running destructive migrations automatically on every replica | Lock contention or duplicate DDL attempts |
+| Forgetting Secret or ConfigMap mounts for init containers | Main app never starts, but the reason is in init failures |
+
+## 11. Security considerations
+
+| Threat | Control | Residual risk |
+|---|---|---|
+| Migration container has powerful DB credentials | Use a dedicated migration role with only needed DDL/DML rights | Migration role is still sensitive and must be rotated |
+| Init image from public registry is compromised | Pin image digest and scan images | Supply-chain risk remains |
+| Secrets exposed to both init and app unnecessarily | Scope env vars and mounts only to containers that need them | Pod-level compromise still exposes mounted secrets |
+
+## 12. Performance considerations
+
+- Init containers are serial, so the total startup time is the sum of all init work plus app boot time.
+- Database migration that takes 45 seconds on one replica takes 45 seconds on **every** new Pod unless you design ownership carefully.
+- Large tool images increase pull time during node replacement; keep them lean and cached.
+- A hanging dependency check can block an entire rollout even when the application build is correct.
+
+## 13. High availability
+
+Init containers improve availability indirectly by ensuring the main container starts in a known-good state. However, they also create a dependency chain: if PostgreSQL is down, new replicas cannot come up.
+
+That means HA planning must include the dependencies, not just the app Deployment. If `core-service` needs PostgreSQL to start, a database outage reduces your ability to self-heal or scale out.
+
+## 14. Disaster recovery
+
+In a DR rebuild, init containers are often what makes first startup succeed. The database restore must happen before services can migrate against it, and migration scripts themselves are part of the recovery artefact.
+
+For financial workloads, store migration definitions in Git and treat them as controlled changes. A restored database with missing or out-of-order migrations is worse than a service that fails loudly.
+
+## 15. Monitoring
+
+| Signal | Why |
+|---|---|
+| Pod condition `Initialized=False` | Immediately points to init-stage failures |
+| Time spent in `Init:` states | Detects slow dependency readiness or slow migrations |
+| Exit code / restart count of init containers | Shows flapping setup logic |
+| Database migration duration | Predicts rollout time and lock risk |
+
+## 16. Troubleshooting
+
+| Symptom | Likely cause | Command | Fix |
+|---|---|---|---|
+| `Init:ImagePullBackOff` | Init image tag wrong or registry auth missing | `kubectl describe pod` | Fix init image reference or pull secret |
+| `Init:CrashLoopBackOff` after Flyway run | Migration script exits non-zero | `kubectl logs <pod> -c migrate-ledger-schema` | Fix SQL or DB permissions |
+| Pod stuck at `Init:0/2` | First init is hanging on an unavailable dependency | `kubectl logs <pod> -c wait-for-postgres` | Fix the dependency; add timeout and clearer logging |
+| Main app never starts though image is fine | Earlier init container failed | `kubectl get pod -o yaml` → `initContainerStatuses` | Repair the init step, not the app |
+| Rollout much slower than expected | Heavy init work on every Pod | Measure `Init:` duration | Refactor one-off prep out of per-Pod startup |
+
+## Interview questions
+
+1. **What guarantee do init containers give you that a shell script in the app entrypoint does not?**
+   *Kubernetes understands their lifecycle explicitly. It reports which init step failed, preserves logs per init container, and guarantees sequential execution before the app container starts.*
+2. **Why are init containers a better place for Flyway or Liquibase than the main Spring Boot process?**
+   *Because schema preparation becomes a visible, isolated startup phase. It removes migration failure from normal application crash diagnosis and lets the app image stay focused on serving traffic.*
+3. **What is the `wait-for-it` anti-pattern?**
+   *Putting indefinite dependency waiting inside the main container startup wrapper. It hides the true state from Kubernetes, delays diagnosis and often leads to fragile shell logic instead of observable init steps.*
+4. **What happens if the second init container fails but the first succeeded?** *(senior)*
+   *The Pod stays in init failure and Kubernetes retries according to restart policy. The first init step is considered complete, but the Pod never progresses to app containers until the failing second step eventually exits successfully.*
+5. **Why can init containers reduce, rather than increase, operational complexity even though they add more YAML?** *(senior)*
+   *Because they turn ambiguous startup behaviour into explicit phases with separate images, logs and exit codes. More declarative structure usually means less guesswork during incidents.*
+
+---
+
+# 1.9 Sidecar Patterns for AxisPay Services
+
+## 1. What it is
+
+A sidecar pattern is when multiple containers run in the same Pod and one of them exists to support the main application rather than serve business traffic directly.
+
+At AxisPay, a production `payment-service` Pod commonly runs three containers: the Spring Boot application, a log-shipping sidecar, and a metrics sidecar.
+
+## 2. Why it exists
+
+Some platform functions belong close to the application but should not be compiled into it: log shipping, metrics translation, service-mesh proxies, certificate renewal and local agents.
+
+A sidecar keeps that concern deployable with the workload while remaining independently replaceable.
+
+## 3. The business problem
+
+`payment-service` writes structured JSON logs and exposes JVM internals through JMX. The platform team wants all logs shipped to the central store and all JVM metrics exposed to Prometheus without forcing every application team to embed vendor-specific libraries or maintain custom exporters.
+
+If those features were baked into the Java service itself, every application release would become an observability release too. A logging config change would require rebuilding `payment-service`. That is the wrong ownership boundary.
+
+## 4. How it works
+
+All containers in a Pod share:
+
+- one network namespace
+- one IP address
+- the loopback interface (`localhost`)
+- any explicitly mounted shared volumes
+
+That makes a sidecar powerful. A metrics sidecar can scrape the application on `localhost` without a Service. A logging sidecar can read files written to a shared volume. The main container keeps its simple contract: serve the application.
+
+A typical production shape:
+
+```yaml
+spec:
+  volumes:
+    - name: app-logs
+      emptyDir: {}
+  containers:
+    - name: payment-service
+      image: registry.axispay.internal/payment-service:1.0.0
+      volumeMounts:
+        - name: app-logs
+          mountPath: /var/log/axispay
+    - name: fluent-bit
+      image: cr.fluentbit.io/fluent/fluent-bit:3.1.8
+      volumeMounts:
+        - name: app-logs
+          mountPath: /var/log/axispay
+    - name: jmx-exporter
+      image: bitnami/jmx-exporter:1.0.1
+      args:
+        - --web.listen-address=:9404
+        - --config.file=/config/jmx.yaml
+```
+
+The application writes JSON logs to `/var/log/axispay/application.log`; Fluent Bit tails them; the JMX exporter exposes metrics for Prometheus.
+
+## 5. Internal architecture
+
+| Container | Responsibility | Shared resource |
+|---|---|---|
+| `payment-service` | Business logic, HTTP API, database calls | CPU, memory, Pod IP, shared log volume |
+| `fluent-bit` or `filebeat` | Tails and forwards logs | Shared log volume, network namespace |
+| `jmx-exporter` | Converts JVM/JMX metrics to Prometheus format | `localhost`, config volume, Pod IP |
+
+Two details matter operationally:
+
+1. Because all containers share `localhost`, the exporter can scrape `payment-service` on `localhost:9404` or its JMX port without a separate Service.
+2. Because resources are accounted per container but enforced at the Pod boundary by node memory pressure, a noisy sidecar can contribute to a Pod OOM that developers misread as "the app crashed".
+
+## 6. Component interactions
+
+```
+payment-service   writes JSON logs to shared volume
+fluent-bit        tails file and ships to central logging
+payment-service   exposes JMX / local metrics endpoint
+jmx-exporter      scrapes localhost and exposes /metrics on Pod IP
+Prometheus        scrapes Pod:9404 via ServiceMonitor/annotations
+```
+
+The network-namespace rule surprises people: `localhost` is shared across containers in a Pod, not private to each one.
+
+## 7. Enterprise example
+
+AxisPay uses the following sidecar split for card-processing services:
+
+| Service | Sidecar 1 | Sidecar 2 | Reason |
+|---|---|---|---|
+| `payment-service` | Fluent Bit | JMX exporter | Logs and JVM metrics are mandatory for live payments |
+| `fraud-service` | Filebeat | JMX exporter | High event volume, custom log shipping pipeline |
+| `merchant-service` | Fluent Bit | none | Lower JVM complexity; app exposes Micrometer directly |
+
+This means the Pod, not just the application JAR, is the deployable production unit.
+
+## 8. Real-world analogy
+
+A racing car and its support crew travelling in the same truck. The driver wins the race, but the telemetry engineer and mechanic are physically attached to the same operation because they must be present at the same place and time.
+
+**Where it breaks:** a support crew can step away and still let the car race. In Kubernetes, if the Pod dies, all sidecars and the app die together.
+
+## 9. Best practices
+
+| Practice | Reason |
+|---|---|
+| Give every sidecar explicit CPU and memory requests/limits | Prevents hidden resource theft and clearer scheduling |
+| Use shared volumes only where needed | Reduces coupling and accidental data exposure |
+| Prefer stdout logging unless a sidecar truly requires files | Simpler and more idiomatic for Kubernetes |
+| Keep sidecars versioned independently from the app image | Platform concerns should not require app rebuilds |
+| Document localhost port ownership inside the Pod | Avoids port collisions between containers |
+| Monitor per-container memory, not only pod restarts | OOM root cause is often the sidecar |
+| Evaluate native sidecars on Kubernetes 1.28+ for support containers that must start first | Better lifecycle modelling than ad hoc ordering |
+
+## 10. Common mistakes
+
+| Mistake | Symptom |
+|---|---|
+| Forgetting sidecar resource requests | Pod schedules too densely and later OOMs |
+| Assuming `localhost` is private per container | Port conflicts or accidental cross-container access |
+| Writing logs to a shared volume with no rotation | Disk pressure on the node |
+| Bundling exporter logic into the app image | Unnecessary rebuilds for platform-only changes |
+| Treating all sidecars as "free" | Performance overhead grows with every supporting container |
+
+## 11. Security considerations
+
+| Threat | Control | Residual risk |
+|---|---|---|
+| Sidecar can read app log volume containing sensitive data | Minimise logged PII; use redaction at source | Shared-volume readers are still trusted insiders |
+| Shared localhost means sidecar can reach internal admin ports | Bind sensitive admin endpoints carefully or require auth | Same-Pod compromise has broad local visibility |
+| Public sidecar image introduces supply-chain risk | Pin digests; scan images; use approved registries | Third-party code still expands the attack surface |
+
+## 12. Performance considerations
+
+- Sidecars consume CPU during the same traffic spikes as the app. Log shippers are often busiest exactly when `payment-service` is busiest.
+- File-based logging adds disk I/O compared with stdout-only logging.
+- JMX scraping and translation are not free; polling too frequently increases JVM overhead.
+- Pod density calculations must include sidecars. A "500Mi app" plus "150Mi logger" plus "100Mi exporter" is a 750Mi Pod, not a 500Mi Pod.
+- Native sidecars can improve startup sequencing, but they do not remove the resource cost of the supporting container itself.
+
+## 13. High availability
+
+Sidecars improve operational availability when they standardise logging and metrics, because failures become visible faster. But they can reduce application availability if a failing sidecar causes the whole Pod to restart or exceed memory.
+
+The HA rule is simple: supporting containers must be **less** fragile than the app they support.
+
+## 14. Disaster recovery
+
+In DR rebuilds, sidecars matter because they restore observability quickly. A recovered service that processes payments but emits no logs or metrics is operationally unsafe.
+
+Treat sidecar configuration — parser configs, JMX rules, log routing — as versioned artefacts alongside the Deployment manifest.
+
+## 15. Monitoring
+
+| Signal | Why |
+|---|---|
+| Per-container memory usage inside the Pod | Identifies whether app or sidecar caused OOM |
+| Log shipping backlog / dropped records | Shows observability degradation before incident response does |
+| Sidecar restart count | Failing support container often predicts wider Pod instability |
+| JMX exporter scrape latency | Detects overloaded exporter or app JVM |
+
+## 16. Troubleshooting
+
+| Symptom | Likely cause | Command | Fix |
+|---|---|---|---|
+| Pod OOMKilled but app logs look normal | Logging or metrics sidecar consumed memory | `kubectl top pod --containers`; `kubectl describe pod` | Set realistic sidecar limits and requests |
+| Prometheus shows no JVM metrics | Exporter sidecar not listening or wrong localhost target | `kubectl logs <pod> -c jmx-exporter`; `kubectl exec <pod> -c jmx-exporter -- wget -qO- localhost:9404/metrics` | Fix exporter config or port |
+| Central logs missing for one Pod | Sidecar cannot read shared volume or output blocked | `kubectl logs <pod> -c fluent-bit` | Fix volume mount path or sink credentials |
+| Pod starts, sidecar never does | Sidecar image pull or config error | `kubectl describe pod` | Repair sidecar image/config |
+| Port 9404 already in use | Another container in the Pod bound the same port | `kubectl exec <pod> -c payment-service -- ss -lntp` | Reassign container ports clearly |
+
+## Interview questions
+
+1. **Why can a sidecar scrape `localhost` without a Kubernetes Service?**
+   *Because containers in the same Pod share one network namespace and therefore one loopback interface. `localhost` is Pod-local, not container-local.*
+2. **Why do sidecars need their own resource requests and limits?**
+   *Because they consume real CPU and memory. If you omit them, the scheduler underestimates Pod size and later OOM or throttling is blamed unfairly on the application container.*
+3. **When would you choose a sidecar instead of a library inside the Java app?**
+   *When the concern is platform-owned and should evolve independently, such as log shipping, generic metrics exporting or policy enforcement.*
+4. **What is the difference between the legacy sidecar pattern and native sidecars in Kubernetes 1.28+?** *(senior)*
+   *Legacy sidecars are ordinary long-running containers started alongside the app. Native sidecars use `restartPolicy: Always` on an init-container-style definition so Kubernetes can better model startup ordering and lifecycle semantics for support containers that must start first and stay running.*
+5. **What is the hidden failure mode of file-sharing sidecars?** *(senior)*
+   *The shared volume becomes a coupling point: bad permissions, unexpected file growth, parser lag or disk pressure in the log shipper can all affect the whole Pod even though the business app code is correct.*
+
+---
+
+# 1.10 Deep Dive: AxisPay Service Architecture
+
+Day 1 teaches objects in isolation: Pods, Deployments, Services, labels and reconciliation. Real systems are not isolated. A card payment flows across several services, and Kubernetes matters at every hop.
+
+A normal AxisPay authorisation starts at the merchant client. The merchant sends a tokenised card payment request to the edge namespace, where `auth-service` first validates the caller's bearer token and merchant entitlements. The client does not talk to Pods directly; it talks to a stable Kubernetes Service. Behind that Service sits a Deployment of `auth-service` Pods. Rolling updates can replace individual Pods because the Service name stays fixed and only ready Pods become endpoints.
+
+Once the request is authenticated, `auth-service` calls `payment-service` over its ClusterIP Service in `axispay-core`. This matters because Pod IPs change constantly. The Deployment behind `payment-service` can scale from three Pods to six under load without the caller changing configuration. The desired state is declarative: the team says how many replicas and what image should exist, and controllers keep making that true.
+
+Inside `payment-service`, the request is enriched with merchant routing rules and feature flags. Those values are not hard-coded. They come from ConfigMaps so operations can, for example, disable a risky issuer route or enable a new idempotency behaviour without rebuilding the container image. Sensitive values — database passwords, HMAC signing keys, third-party API credentials — come from Secrets. This is the first Day 1 architectural lesson in practice: configuration and runtime identity live outside the container image, but are still managed declaratively.
+
+Before `payment-service` asks the bank to reserve funds, it performs a synchronous call to `fraud-service`. That call runs on a tight timeout because fraud scoring is part of the user-facing path. If the fraud decision takes too long, the entire payment becomes slow. Kubernetes objects matter here too. `fraud-service` sits behind its own Service, backed by a Deployment. Readiness probes keep slow-starting or degraded Pods out of rotation. If one Pod dies, the Service keeps routing to the others. Self-healing is not a slogan here; it is what stops one Java crash from becoming a merchant outage.
+
+If `fraud-service` returns a permissive score, `payment-service` moves to `core-service`, AxisPay's ledger service. `core-service` is where money becomes accounting. It writes the authorisation hold as a double-entry reservation: one ledger entry for the customer liability and one for the merchant-side pending settlement account. This step is intentionally synchronous. If the ledger cannot reserve the money, the payment must fail cleanly rather than drift into an uncertain state.
+
+At this point several Kubernetes concepts meet:
+
+| Hop | Kubernetes object doing the stability work | Why it matters |
+|---|---|---|
+| Client → `auth-service` | Service + Deployment | Stable address while Pods roll |
+| `auth-service` → `payment-service` | ClusterIP Service | Pod IP churn hidden from callers |
+| `payment-service` → `fraud-service` | Service + readiness probes | Slow or broken Pods removed from traffic |
+| `payment-service` → `core-service` | Service + Secrets + ConfigMaps | Stable routing plus controlled credentials/config |
+| `core-service` → database | Pod + Secret + persistent data tier | Workload identity separated from secret material |
+
+After the ledger booking succeeds, the synchronous payment path is effectively complete: the merchant gets an authorisation response. But AxisPay still has follow-up work. `payment-service` emits an asynchronous event for `merchant-service`, which later sends a webhook notification back to the merchant platform. This is where Kubernetes helps in a different way. The webhook sender can roll independently from the card-authorisation path because the services are separate Deployments with separate desired state. One team can update merchant notification formatting without risking the ledger path.
+
+Kubernetes configuration also shapes operational control around the flow. Feature toggles for fraud thresholds and issuer routing live in ConfigMaps so they can be reviewed and changed separately from the Java code. API keys for webhook signing and external fraud feeds live in Secrets so they are mounted consistently across replicas. Deployments give each service a controlled rollout boundary. Services give every caller a stable name. The result is that a single failed Pod rarely matters; what matters is whether the **set** of ready replicas behind each Service still matches the declared design.
+
+Why is this architecture such a good Day 1 example? Because it demonstrates the value of Kubernetes before advanced features appear. Declarative desired state means the platform team says "three payment Pods and three fraud Pods should exist" and the system recreates them when a node dies. Services provide stable identity while those Pods are replaced. Rolling updates allow a new `payment-service` image to come online gradually, with readiness protecting live traffic. Self-healing is not only about crashes; it is also about replacing bad instances with no operator logging into a server.
+
+The architecture also explains why lifecycle settings matter so much for Java. `payment-service` is not a stateless toy. If a Pod is killed mid-request, the blast radius reaches fraud checks, ledger reservations and merchant retries. That is why later sections add startup probes, graceful shutdown, init containers and sidecars: they are not optional decorations, but the controls that make this microservice chain safe under change.
+
+In other words, Day 1 objects are simple individually but powerful in combination. A payment succeeds because several small Kubernetes abstractions — Pods, Deployments, Services, ConfigMaps and Secrets — each do one boring job reliably.
+
+---
+
+# 1.11 Troubleshooting Java Workloads: Real Incident Walkthroughs
+
+## 1. What it is
+
+This section is a practical guide to debugging Java workloads on Kubernetes using the cluster's own evidence: status, events, logs and container settings.
+
+## 2. Why it exists
+
+Java incidents often present indirectly. The symptom shown by Kubernetes is rarely the root cause. `CrashLoopBackOff` is not a cause. `ImagePullBackOff` is not a cause. `Running 0/1` is not a cause. They are wrappers around JVM, registry, dependency and configuration failures.
+
+## 3. The business problem
+
+AxisPay's most expensive outages were not caused by exotic Kubernetes bugs. They were caused by ordinary operational mismatches interpreted too slowly:
+
+- a container memory limit lower than the JVM heap assumption
+- a missing registry credential after rotating a pull secret
+- a readiness probe tied to a database that was still recovering
+
+Each one looked different on the surface. Each one became diagnosable only when engineers followed a strict sequence: **describe → logs → compare desired vs actual**.
+
+## 4. How it works
+
+For Java services, the fastest reliable workflow is:
+
+1. Check pod phase and restart count.
+2. Read Events with `kubectl describe pod`.
+3. Read previous logs if the container is restarting.
+4. Compare manifest limits, probes and image settings against the symptom.
+5. Fix the configuration mismatch before touching code.
+
+## 5. Internal architecture
+
+| Signal source | What it tells you |
+|---|---|
+| Pod status | Whether the container started, is running, and is ready |
+| Events | Scheduler, kubelet and image-pull failures |
+| `--previous` logs | Why the last Java process exited |
+| Container resource limits | Whether the JVM fits the container |
+| Probe configuration | Whether the platform is misjudging startup or readiness |
+
+## 6. Component interactions
+
+During an incident, four layers are interacting:
+
+```
+registry / image pull
+container runtime / kubelet
+JVM / Spring Boot process
+Kubernetes probes and Services
+```
+
+The art is identifying which layer failed first.
+
+## 7. Enterprise example
+
+AxisPay's on-call runbook for Java services says: do not guess from the high-level pod status. A `CrashLoopBackOff` might be OOM, bad config, failed migration or an application exception. A `Running` Pod can still be absent from the Service. Diagnosis starts from evidence, not from the name of the state.
+
+## 8. Real-world analogy
+
+A car dashboard warning light. "Engine" is not a diagnosis; it is a category. You still need to open the bonnet, read the fault code and check which subsystem failed.
+
+**Where it breaks:** Kubernetes gives you better evidence than a car dashboard, but only if you look at the right object in the right order.
+
+## 9. Best practices
+
+| Practice | Reason |
+|---|---|
+| Always use `kubectl logs --previous` for restarting Java containers | The live container may not exist long enough to inspect |
+| Keep JVM flags visible in manifests or config | Hidden entrypoint defaults are hard to compare during incidents |
+| Separate startup, readiness and liveness endpoints | Makes probe failures interpretable |
+| Use descriptive image tags and pinned registries | Shortens pull-failure diagnosis |
+| Alert on restart rate, not just total failures | Catches flapping before full outage |
+
+## 10. Common mistakes
+
+| Mistake | Symptom |
+|---|---|
+| Looking at current logs instead of `--previous` | Empty output during CrashLoop diagnosis |
+| Increasing memory limit without changing JVM settings | OOM repeats because heap still overcommits native memory |
+| Recreating pods before reading Events | Evidence disappears from immediate view |
+| Treating readiness failure as a liveness problem | Unnecessary restarts worsen recovery |
+
+## 11. Security considerations
+
+| Threat | Control | Residual risk |
+|---|---|---|
+| Incident logs contain tokens or PAN-adjacent data | Redact at source; restrict log access | Emergency debugging still widens visibility |
+| Debugging private registries exposes credentials in shell history | Use imagePullSecrets, not ad hoc `docker login` on nodes | Secret misconfiguration still causes pull failures |
+| Over-broad `kubectl exec` during incidents | Restrict RBAC and prefer read-only commands first | Break-glass access remains sensitive |
+
+## 12. Performance considerations
+
+- Repeated crash loops create load on the API server, kubelet and registry.
+- Mis-tuned readiness probes can hold capacity out of rotation for minutes during a spike.
+- OOM-restarting JVMs often thrash the node page cache and hurt neighbouring Pods.
+
+## 13. High availability
+
+The purpose of good troubleshooting is to restore healthy replicas before redundancy is exhausted. In a three-replica Deployment, one broken Pod is an incident warning. Two broken Pods is now an availability problem. Fast diagnosis protects HA.
+
+## 14. Disaster recovery
+
+These incidents are not classic DR events, but the same principle applies: preserve the evidence and keep the configuration in Git. If a cluster rebuild reuses the same bad image pull secret or the same oversized JVM heap, you have merely recreated the outage.
+
+## 15. Monitoring
+
+| Signal | Why |
+|---|---|
+| Restart rate by Deployment | First sign of Java instability |
+| OOM kill count | Detects heap/limit mismatch |
+| Image pull failure events | Registry or credential issue |
+| Readiness probe failure rate | Distinguishes degraded start from healthy service |
+
+## 16. Troubleshooting
+
+### Incident A — `CrashLoopBackOff` caused by `java.lang.OutOfMemoryError`
+
+**Narrative.** After a release, one `payment-service` Pod never stayed up for more than 25 seconds. The Deployment was unchanged except for a new image. `kubectl get pods` showed `CrashLoopBackOff`, but the cause was inside the last terminated JVM.
+
+```bash
+kubectl logs payment-service-7d9b68d57d-lwckm --previous
+```
+
+```text
+2026-08-14 10:22:14.419  INFO 1 --- [           main] c.a.payment.PaymentApplication : Starting PaymentApplication using Java 17
+2026-08-14 10:22:28.804  INFO 1 --- [           main] com.zaxxer.hikari.HikariDataSource       : HikariPool-1 - Start completed.
+Exception in thread "http-nio-8080-exec-7" java.lang.OutOfMemoryError: Java heap space
+        at java.base/java.util.Arrays.copyOf(Arrays.java:3537)
+        at java.base/java.lang.AbstractStringBuilder.ensureCapacityInternal(AbstractStringBuilder.java:228)
+        at java.base/java.lang.StringBuilder.append(StringBuilder.java:179)
+        at com.axispay.payment.audit.JsonAuditEncoder.encode(JsonAuditEncoder.java:88)
+        at com.axispay.payment.audit.AuditService.write(AuditService.java:51)
+```
+
+The manifest had `resources.limits.memory: 768Mi`, but the container entrypoint still set `-Xmx1024m`. Even worse, native memory, metaspace and thread stacks sit **outside** the Java heap. The JVM was guaranteed to exceed the cgroup limit.
+
+**Fix.** Lower the heap relative to the container limit, or let the JVM size itself from cgroup memory:
+
+```yaml
+env:
+  - name: JAVA_TOOL_OPTIONS
+    value: "-XX:MaxRAMPercentage=60 -XX:InitialRAMPercentage=30"
+resources:
+  requests:
+    memory: 512Mi
+  limits:
+    memory: 768Mi
+```
+
+For teams that prefer explicit values, `-Xmx512m` would also fit. The important point is that heap must leave room for non-heap memory.
+
+### Incident B — `ImagePullBackOff` on the private fraud-service registry image
+
+**Narrative.** A new `fraud-service` rollout created Pods that never started. Logs were useless because the container had never been created.
+
+```bash
+kubectl describe pod fraud-service-7854fc4979-l9s9z
+```
+
+```text
+Events:
+  Type     Reason          Age                From               Message
+  ----     ------          ----               ----               -------
+  Normal   Scheduled       33s                default-scheduler  Successfully assigned axispay-core/fraud-service-7854fc4979-l9s9z to axispay-m02
+  Normal   Pulling         31s                kubelet            Pulling image "registry.axispay.internal/fraud-service:1.14.2"
+  Warning  Failed          30s                kubelet            Failed to pull image "registry.axispay.internal/fraud-service:1.14.2": failed to authorize: unexpected status from GET https://registry.axispay.internal/v2/token: 401 Unauthorized
+  Warning  Failed          30s                kubelet            Error: ErrImagePull
+  Normal   BackOff         18s (x3 over 29s)  kubelet            Back-off pulling image "registry.axispay.internal/fraud-service:1.14.2"
+  Warning  Failed          18s (x3 over 29s)  kubelet            Error: ImagePullBackOff
+```
+
+The root cause was an `imagePullSecrets` reference to `regcred-prod`, but the secret in `axispay-core` had been created as `registry-cred-prod` during a credential rotation.
+
+**Fix.** Correct the secret name in the Pod template and ensure the secret exists in the same namespace:
+
+```yaml
+spec:
+  imagePullSecrets:
+    - name: registry-cred-prod
+```
+
+Then verify:
+
+```bash
+kubectl get secret registry-cred-prod -n axispay-core
+kubectl rollout restart deploy/fraud-service -n axispay-core
+```
+
+### Incident C — Pod `Running` but failing readiness forever
+
+**Narrative.** `core-service` showed `Running 0/1` for nearly ten minutes after a node replacement. Operators first suspected slow startup, but `describe` showed a different story.
+
+```bash
+kubectl describe pod core-service-5ff88c7599-6gm7z
+```
+
+```text
+Events:
+  Type     Reason     Age                   From     Message
+  ----     ------     ----                  ----     -------
+  Warning  Unhealthy  8m12s (x96 over 9m)   kubelet  Readiness probe failed: Get "http://10.244.1.42:8080/readyz": dial tcp 10.244.1.42:8080: connect: connection refused
+  Warning  Unhealthy  5m40s (x44 over 7m)   kubelet  Readiness probe failed: HTTP probe failed with statuscode: 503
+```
+
+Application logs showed Spring Boot starting normally, then waiting on a database health indicator because PostgreSQL was still replaying WAL after failover. The Pod was **correctly** unready, but without a `startupProbe`, the team could not easily distinguish "still booting" from "booted but dependency unavailable".
+
+**Fix.** Add a generous `startupProbe` so liveness and readiness are not evaluated as if boot and dependency recovery are the same phase:
+
+```yaml
+startupProbe:
+  httpGet:
+    path: /startupz
+    port: 8080
+  periodSeconds: 5
+  failureThreshold: 24
+readinessProbe:
+  httpGet:
+    path: /readyz
+    port: 8080
+  periodSeconds: 5
+  failureThreshold: 3
+```
+
+This gives the app up to two minutes to finish real startup. After that, continuing readiness failure is more likely to represent a broken dependency path than simple class loading.
+
+**Decision rule.** If logs show the web server never bound the port, think startup. If the port is open but readiness returns 503 because a downstream dependency is red, think dependency health — do not add an aggressive liveness probe and make it worse.
+
+## Interview questions
+
+1. **Why is `kubectl logs --previous` essential for `CrashLoopBackOff`?**
+   *Because the currently running container may be brand new or may not stay alive long enough to emit the failure. `--previous` shows the last terminated instance, which usually contains the real exception.*
+2. **Why can a JVM OOM even when `-Xmx` is lower than the container memory limit?**
+   *Because heap is only part of process memory. Metaspace, direct buffers, thread stacks, JIT code cache and native libraries all consume memory outside the heap.*
+3. **Why are logs useless for `ImagePullBackOff`?**
+   *Because the container never started. The evidence is in Pod Events from the kubelet, especially authorization, DNS or tag errors while pulling the image.*
+4. **How do you distinguish slow startup from permanent readiness failure?** *(senior)*
+   *Correlate Events with application logs. If the server port never opens and startup logs are incomplete, it is startup. If the app starts but readiness returns 503 because a downstream dependency is unhealthy, it is a serving-readiness problem. `startupProbe` separates those phases cleanly.*
+5. **What is the safest JVM sizing rule inside containers?** *(senior)*
+   *Size the heap as a fraction of cgroup memory using `-XX:MaxRAMPercentage` or a conservatively chosen explicit `-Xmx`, leaving room for non-heap memory. Then verify with real memory telemetry rather than trusting defaults.*
+
+---
+
 # Day 1 cheat sheet
 
 ## The 6-step triage loop

@@ -142,7 +142,120 @@ function dHelm(pres, o) {
 }
 
 // ---------------------------------------------------------------------------
-// 4. PROMOTION — one artefact, three environments
+// 4. TLS AUTH — kubeconfig, certs, and the RBAC identity they become
+// ---------------------------------------------------------------------------
+function dTLSAuth(pres, o) {
+  const s = L.newSlide(pres, false);
+  L.chip(s, o.chip, C.teal); L.heading(s, o.title, false);
+
+  box(s, 0.75, 3.05, 1.65, 1.0, "operator", "kubectl", C.navy3);
+  box(s, 2.95, 2.3, 2.55, 1.0, "kubeconfig", "cluster CA · cert · key", C.navy3);
+  box(s, 2.95, 4.2, 1.55, 0.82, "client cert", "CN=alice · O=devs", C.navy3);
+  box(s, 4.7, 4.2, 0.95, 0.82, "key", null, C.navy3);
+  box(s, 6.45, 3.0, 2.05, 1.1, "API server", "mutual TLS handshake", C.teal);
+  box(s, 9.0, 2.4, 2.2, 0.95, "authenticated user", "alice · group devs", C.green);
+  box(s, 9.0, 4.15, 2.2, 0.95, "RBAC", "verbs + resources", C.purple);
+  box(s, 11.55, 3.0, 1.0, 1.1, "allow\nor\nforbid", null, C.amber, C.navy);
+
+  arrow(s, 2.45, 3.55, 0.45, 0, C.amberD, "reads");
+  arrow(s, 4.25, 3.32, 0, 0.8, C.muted, null, true);
+  arrow(s, 5.15, 3.32, 0, 0.8, C.muted, null, true);
+  arrow(s, 5.75, 3.55, 0.6, 0, C.amberD, "presents");
+  arrow(s, 8.6, 3.12, 0.35, -0.25, C.green);
+  s.addText("CN / O", { x: 7.35, y: 2.62, w: 1.2, h: 0.24, fontFace: F.body, fontSize: 10,
+    bold: true, color: C.green, align: "center", margin: 0 });
+  arrow(s, 10.1, 3.35, 0, 0.72, C.purple);
+  arrow(s, 11.25, 4.62, 0.25, -1.07, C.amberD);
+  s.addText("decision", { x: 10.55, y: 4.15, w: 1.3, h: 0.24, fontFace: F.body, fontSize: 10,
+    bold: true, color: C.amberD, align: "center", margin: 0 });
+
+  s.addText("No internal user table — the certificate text IS the user record.",
+    { x: 7.0, y: 5.25, w: 4.9, h: 0.38, fontFace: F.body, fontSize: 11, color: C.ink,
+      align: "center", margin: 0 });
+
+  kicker(s, "The certificate proves identity first; RBAC only evaluates the username and groups it produced.", C.teal);
+  L.foot(s, pres); s.addNotes(L.notes(o)); return s;
+}
+
+// ---------------------------------------------------------------------------
+// 5. HELM DEPENDENCIES — declared in Chart.yaml, resolved into charts/
+// ---------------------------------------------------------------------------
+function dHelmDeps(pres, o) {
+  const s = L.newSlide(pres, false);
+  L.chip(s, o.chip, C.teal); L.heading(s, o.title, false);
+
+  box(s, 0.75, 2.45, 2.35, 0.95, "Chart.yaml", "name · version · repo", C.navy3);
+  box(s, 0.75, 4.15, 2.35, 0.95, "values.yaml", "parent + global values", C.navy3);
+
+  box(s, 4.0, 2.05, 2.1, 0.82, "redis", "subchart", C.teal);
+  box(s, 4.0, 3.3, 2.1, 0.82, "postgresql", "subchart", C.teal);
+  box(s, 4.0, 4.55, 2.1, 0.82, "rabbitmq", "subchart", C.teal);
+
+  s.addShape("roundRect", { x: 8.0, y: 2.35, w: 4.15, h: 3.0, fill: { color: C.navy2 },
+    line: { color: C.green, width: 2 }, rectRadius: 0.1 });
+  s.addText("charts/", { x: 8.0, y: 2.46, w: 4.15, h: 0.34, fontFace: F.head, fontSize: 13,
+    bold: true, color: C.green, align: "center", margin: 0 });
+  box(s, 8.35, 2.95, 3.45, 0.62, "redis-18.0.0.tgz", null, C.green, C.navy);
+  box(s, 8.35, 3.72, 3.45, 0.62, "postgresql-14.1.0.tgz", null, C.green, C.navy);
+  box(s, 8.35, 4.49, 3.45, 0.62, "rabbitmq-12.0.0.tgz", null, C.green, C.navy);
+
+  arrow(s, 3.2, 2.92, 4.6, 0.3, C.amberD);
+  s.addText("helm dependency update", { x: 4.05, y: 3.02, w: 3.6, h: 0.24, fontFace: F.body, fontSize: 10,
+    bold: true, color: C.amberD, align: "center", margin: 0 });
+  arrow(s, 3.2, 4.62, 0.7, -2.05, C.purple, "values");
+  arrow(s, 3.2, 4.62, 0.7, -0.8, C.purple);
+  arrow(s, 3.2, 4.62, 0.7, 0.45, C.purple);
+  arrow(s, 7.75, 3.26, -1.55, -0.73, C.green, null, true);
+  arrow(s, 7.75, 3.83, -1.55, -0.12, C.green, null, true);
+  arrow(s, 7.75, 4.4, -1.55, 0.49, C.green, null, true);
+  s.addText("resolved bytes", { x: 5.85, y: 3.55, w: 1.55, h: 0.5, fontFace: F.body, fontSize: 9.5,
+    bold: true, color: C.green, align: "center", valign: "middle", margin: 0 });
+
+  s.addText("One release renders the parent chart and every vendored child chart together.",
+    { x: 3.45, y: 5.72, w: 6.0, h: 0.34, fontFace: F.body, fontSize: 11, color: C.ink,
+      align: "center", margin: 0 });
+
+  kicker(s, "Dependencies are declared in Chart.yaml, configured by parent values, and rendered from vendored chart archives.", C.teal);
+  L.foot(s, pres); s.addNotes(L.notes(o)); return s;
+}
+
+// ---------------------------------------------------------------------------
+// 6. KUBEADM UPGRADE — control plane first, workers one by one
+// ---------------------------------------------------------------------------
+function dKubeadmUpgrade(pres, o) {
+  const s = L.newSlide(pres, true);
+  L.chip(s, o.chip, C.amberD); L.heading(s, o.title, true);
+
+  box(s, 0.75, 3.05, 1.55, 1.0, "plan", "next supported minor", C.navy3);
+  box(s, 2.75, 2.45, 2.15, 1.6, "control plane", "Node-1\nkubeadm upgrade apply", C.teal);
+  box(s, 5.35, 2.45, 2.15, 1.6, "control plane", "Node-2 · Node-3\nkubeadm upgrade node", C.navy3);
+  box(s, 7.95, 2.45, 2.45, 1.6, "workers", "worker-a then worker-b\ndrain → upgrade → uncordon", C.purple);
+  box(s, 10.85, 3.05, 1.7, 1.0, "target", "all nodes v1.x.y", C.green);
+
+  arrow(s, 2.35, 3.55, 0.35, 0, C.amberD, "1");
+  arrow(s, 4.95, 3.25, 0.35, 0, C.amberD, "2");
+  arrow(s, 7.55, 3.25, 0.35, 0, C.amberD, "3");
+  arrow(s, 10.45, 3.55, 0.35, 0, C.amberD, "4");
+
+  s.addText("Only the first control-plane node runs the full apply path.",
+    { x: 2.7, y: 4.35, w: 2.25, h: 0.32, fontFace: F.body, fontSize: 10.5, color: C.codetx,
+      align: "center", margin: 0 });
+  s.addText("Workers move one at a time so service capacity returns before the next drain.",
+    { x: 7.7, y: 4.35, w: 2.95, h: 0.44, fontFace: F.body, fontSize: 10.5, color: C.codetx,
+      align: "center", margin: 0, lineSpacing: 13 });
+
+  s.addShape("roundRect", { x: 2.75, y: 5.0, w: 7.65, h: 0.82, fill: { color: C.navy2 },
+    line: { color: C.amber, width: 2 }, rectRadius: 0.1 });
+  s.addText("Temporary mixed versions are tolerated only while the sequence is in progress.",
+    { x: 2.85, y: 5.0, w: 7.45, h: 0.82, fontFace: F.body, fontSize: 11.5, bold: true,
+      color: C.amber, align: "center", valign: "middle", margin: 0 });
+
+  kicker(s, "Upgrade apply once, upgrade every other node in order, and finish with the whole cluster schedulable again.");
+  L.foot(s, pres); s.addNotes(L.notes(o)); return s;
+}
+
+// ---------------------------------------------------------------------------
+// 7. PROMOTION — one artefact, three environments
 // ---------------------------------------------------------------------------
 function dPromotion(pres, o) {
   const s = L.newSlide(pres, false);
@@ -186,7 +299,7 @@ function dPromotion(pres, o) {
 }
 
 // ---------------------------------------------------------------------------
-// 5. SCRAPE PATH — four hops, and the one that fails silently
+// 8. SCRAPE PATH — four hops, and the one that fails silently
 // ---------------------------------------------------------------------------
 function dScrape(pres, o) {
   const s = L.newSlide(pres, true);
@@ -222,7 +335,7 @@ function dScrape(pres, o) {
 }
 
 // ---------------------------------------------------------------------------
-// 6. ALERT FLOW — Prometheus decides WHETHER, Alertmanager decides WHO
+// 9. ALERT FLOW — Prometheus decides WHETHER, Alertmanager decides WHO
 // ---------------------------------------------------------------------------
 function dAlertFlow(pres, o) {
   const s = L.newSlide(pres, false);
@@ -271,7 +384,7 @@ function dAlertFlow(pres, o) {
 }
 
 // ---------------------------------------------------------------------------
-// 7. LOG PIPELINE — labels are indexed, content is scanned
+// 10. LOG PIPELINE — labels are indexed, content is scanned
 // ---------------------------------------------------------------------------
 function dLogs(pres, o) {
   const s = L.newSlide(pres, true);
@@ -308,7 +421,7 @@ function dLogs(pres, o) {
 }
 
 // ---------------------------------------------------------------------------
-// 8. THE WEEK — one arc, closing slide
+// 11. THE WEEK — one arc, closing slide
 // ---------------------------------------------------------------------------
 function dWeek(pres, o) {
   const s = L.newSlide(pres, true);
@@ -344,5 +457,6 @@ function dWeek(pres, o) {
   L.foot(s, pres); s.addNotes(L.notes(o)); return s;
 }
 
-module.exports = { box, arrow, kicker, dIdentity, dRBAC, dHelm, dPromotion,
-                   dScrape, dAlertFlow, dLogs, dWeek };
+module.exports = { box, arrow, kicker, dIdentity, dRBAC, dHelm, dTLSAuth,
+                   dHelmDeps, dKubeadmUpgrade, dPromotion, dScrape,
+                   dAlertFlow, dLogs, dWeek };

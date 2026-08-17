@@ -1121,6 +1121,782 @@ The last one is the useful one *between* upgrades. It tells you months ahead whi
 
 ---
 
+# 5.8 Supply Chain Security for Java Microservices
+
+## 1. What it is
+
+Supply chain security answers three questions about a workload before it runs:
+
+| Question | Control |
+|---|---|
+| What is in the image? | SBOM |
+| Who built it? | signing and provenance |
+| Was it changed after build? | signature verification at deploy time |
+
+For AxisPay's JDK 17 services, this includes Java dependencies, transitive jars, the runtime base image, and the registry artefacts around the image.
+
+## 2. Why it exists
+
+A Spring Boot service is mostly code you did not write. When a CVE lands, the first task is usually not patching. It is finding where the vulnerable component exists at all. If `fraud-service` pulls in a vulnerable jar transitively, reading `pom.xml` is not enough.
+
+Supply chain controls exist to make exposure visible and provenance defensible.
+
+## 3. The business problem
+
+AxisPay receives a Log4Shell-style advisory: a vulnerable logging component exists in a transitive dependency of `fraud-service`. Without SBOMs, the platform team starts manual dependency audits across `payment-service`, `fraud-service`, `auth-service`, `merchant-service` and `core-service`. That is hours or days of uncertainty.
+
+With SBOMs tied to image digests, they query the vulnerable package and version, identify every affected service in minutes, and patch only the real exposure set. The difference is not convenience. It is incident speed.
+
+## 4. How it works
+
+Generate an SBOM during the build or from the final image:
+
+```xml
+<plugin>
+  <groupId>org.cyclonedx</groupId>
+  <artifactId>cyclonedx-maven-plugin</artifactId>
+  <version>2.8.0</version>
+</plugin>
+```
+
+```bash
+syft registry.example.com/axispay/fraud-service:2026.08.14 -o cyclonedx-json > fraud-service.sbom.json
+cosign sign   registry.example.com/axispay/fraud-service@sha256:abcd...
+cosign verify registry.example.com/axispay/fraud-service@sha256:abcd...
+```
+
+Then enforce at admission: only images signed by the trusted CI identity may run.
+
+Base-image choice belongs in the same discussion:
+
+| Runtime image | Benefit | Trade-off |
+|---|---|---|
+| full JDK | easy debugging with shell and JVM tools | larger attack surface |
+| slim JRE | smaller, familiar glibc base | fewer diagnostics |
+| distroless Java | minimal surface, fewer packages to patch | almost no in-container debugging |
+| Alpine Java | small image | musl compatibility surprises for some Java workloads |
+
+For AxisPay, distroless or slim glibc-based images are the safe default. Alpine is a deliberate choice, not an automatic upgrade.
+
+## 5. Internal architecture
+
+Two chains matter:
+
+| Chain | Meaning |
+|---|---|
+| dependency chain | what components are present |
+| provenance chain | who produced the image |
+
+Maven or Gradle resolve the first well. Cosign and the registry record the second by digest.
+
+## 6. Component interactions
+
+```
+git push
+   → build JAR
+   → generate SBOM
+   → build image
+   → sign image digest
+   → push image, signature, SBOM
+   → admission verifies signature
+   → pod starts only if policy passes
+```
+
+## 7. Enterprise example
+
+A processor with signing but no SBOMs knew its images were authentic and still needed two days to identify a vulnerable XML library across services. After adding searchable SBOMs, a later advisory took minutes to scope.
+
+## 8. Real-world analogy
+
+The SBOM is the cargo manifest. The signature is the tamper seal.
+
+**Where it breaks**
+
+Software cargo is nested. One top-level dependency can pull twenty more. "We do not depend on Log4j directly" proves very little.
+
+## 9. Best practices
+
+- Generate SBOMs for the build and for the final image.
+- Store them against the image digest.
+- Sign digests, not tags.
+- Enforce verification at admission, not only in CI.
+- Prefer distroless or slim glibc-based runtime images for production Java services.
+
+## 10. Common mistakes
+
+| Mistake | What happens |
+|---|---|
+| SBOM generated and discarded | no usable inventory during incidents |
+| signing tags | proof disappears when tags move |
+| scanning source only | OS-package CVEs are missed |
+| choosing Alpine only for size | musl compatibility surprises appear later |
+
+## 11. Security considerations
+
+An SBOM does not stop an attack. It shortens the gap between CVE disclosure and exposure knowledge. Image signing addresses a different risk: untrusted or tampered images entering the cluster.
+
+## 12. Performance considerations
+
+SBOM generation and signing cost CI seconds, not runtime overhead. Signature verification adds small pod-start latency and is operationally cheap compared with running unverified images.
+
+## 13. High availability
+
+If signature verification depends on a fragile webhook, deployment can stop everywhere. Test policy in non-blocking mode first and keep a documented, audited bypass for registry or signer outages.
+
+## 14. Disaster recovery
+
+Back up the policy and the inventory:
+
+| Artefact | Why |
+|---|---|
+| SBOM store | rapid CVE scoping after recovery |
+| signing policy | enforces trusted-image deployment |
+| verification material | required to validate images post-restore |
+
+## 15. Monitoring
+
+Watch for signature-policy rejections and stale base-image digests. An old `eclipse-temurin` or distroless digest is a patch-lag signal even before the next advisory lands.
+
+## 16. Troubleshooting
+
+| Symptom | Cause | Command |
+|---|---|---|
+| pod rejected as unsigned | image not signed or wrong identity | `cosign verify <image>@<digest>` |
+| vulnerable jar missing from SBOM | source-only generation | `mvn dependency:tree` |
+| distroless image hard to inspect | no shell tools | use an ephemeral debug container |
+
+## Interview questions
+
+1. **Why is an SBOM better than reading `pom.xml` during a CVE incident?** — It includes resolved transitive dependencies.
+2. **Why sign digests rather than tags?** — Tags move; digests do not.
+3. **What does admission-time verification add beyond CI?** — It blocks untrusted images at deployment time.
+4. **Why is Alpine a cautious default for Java?** — Small image, but musl compatibility and support surprises.
+5. **What did AxisPay gain during the Log4Shell-style incident?** — Rapid identification of every affected service.
+
+---
+
+# 5.9 Container Image Scanning and Vulnerability Management
+
+## 1. What it is
+
+Image scanning checks the final container for known vulnerabilities in both OS packages and application dependencies.
+
+| Layer | Example |
+|---|---|
+| OS packages | openssl, glibc, ca-certificates |
+| Java dependencies | Jackson, Netty, Logback, Spring jars |
+
+For Java, both layers matter.
+
+## 2. Why it exists
+
+A rebuilt image can become vulnerable even if application code did not change, because the base image aged. The reverse is also true: a fresh base image does not fix an old transitive jar. Scanning exists to catch both.
+
+## 3. The business problem
+
+AxisPay's `payment-service` release passes tests, then Trivy reports a critical CVE in Jackson. The team does not depend on Jackson directly. The scanner is still right: the vulnerable jar arrived transitively.
+
+The organisation therefore needs a path from finding to triage to remediation to proof.
+
+## 4. How it works
+
+```bash
+trivy image --severity HIGH,CRITICAL registry.example.com/axispay/payment-service:2026.08.14
+grype registry.example.com/axispay/payment-service:2026.08.14
+```
+
+Useful CI policy:
+
+| Severity | Default action |
+|---|---|
+| CRITICAL | fail the build |
+| HIGH | fail unless a tracked exception exists |
+| MEDIUM and below | record and patch on schedule |
+
+The exception needs an owner and an expiry date.
+
+Triage questions decide urgency:
+
+| Question | Why it matters |
+|---|---|
+| Is the package actually in the shipped image? | source and runtime do not always match |
+| Is the vulnerable code path reachable? | an exposed parser bug outranks an unused optional module |
+| Is there a fixed version now? | some findings need temporary exception handling |
+
+## 5. Internal architecture
+
+Scanners match discovered packages to vulnerability databases. For Java images they inspect the image layers, jar metadata and OS package database. That is why the scan belongs on the **final image**.
+
+## 6. Component interactions
+
+```
+mvn package
+   → build image
+   → Trivy / Grype scan image
+   → policy gate
+   → publish only if policy allows
+```
+
+## 7. Enterprise example
+
+A firm blocked every HIGH finding. One upstream OpenSSL HIGH with no immediate vendor fix stopped every release, and the gate was disabled. The corrected rule was stricter in practice: CRITICAL always blocks; HIGH blocks unless an approved, expiring exception exists.
+
+## 8. Real-world analogy
+
+A scanner is the airport X-ray machine. It highlights suspicious items. The triage process decides which ones really stop the journey.
+
+**Where it breaks**
+
+Scanners infer risk from package identity. One finding may be urgent RCE; another may be an unused optional module.
+
+## 9. Best practices
+
+- Scan the final image, not only the repository.
+- Update scanner databases in CI.
+- Fail on CRITICAL by default.
+- Allow HIGH only with tracked exceptions.
+- Re-scan after remediation.
+
+## 10. Common mistakes
+
+| Mistake | What happens |
+|---|---|
+| scanning source only | OS CVEs missed |
+| scanning base image only | vulnerable jars missed |
+| permanent exceptions | risk acceptance becomes invisible |
+| fixing `pom.xml` and not rebuilding | vulnerable image still ships |
+
+## 11. Security considerations
+
+A green scan means "no known match now", not "safe forever". A red scan also needs triage: is the package present, on the runtime path, and actually reachable?
+
+## 12. Performance considerations
+
+Scanning costs CI minutes, not cluster resources. Smaller runtime images scan faster and usually produce fewer irrelevant findings.
+
+## 13. High availability
+
+If the scanner service is down, releases may stop. Decide that consciously and keep a break-glass, audited bypass for hotfixes.
+
+## 14. Disaster recovery
+
+Retain historical scan reports, policy definitions and exception records. After an incident, audit often asks when a vulnerable image first became known.
+
+## 15. Monitoring
+
+Track open CRITICAL findings by service, exception records nearing expiry, and image age since last rebuild. Those three numbers drive most patching work.
+
+## 16. Troubleshooting
+
+| Symptom | Cause | Command |
+|---|---|---|
+| Jackson CVE but no direct dependency | transitive jar | `mvn dependency:tree | grep jackson` |
+| CVE still present after version bump | old image still scanned | rebuild and re-scan |
+| same base CVEs every week | stale parent image | rebuild from newer base |
+
+## Interview questions
+
+1. **Why scan the final Java image?** — It contains both OS packages and resolved runtime jars.
+2. **Why is "fail every HIGH" brittle?** — Some HIGHs have low exploitability or no immediate fix, so teams disable the gate.
+3. **What is the first triage question after a finding?** — Is the vulnerable component actually present and reachable?
+4. **How would AxisPay fix a transitive Jackson CVE in `payment-service`?** — Override the version in Maven, rebuild, and re-scan.
+5. **Why do findings reappear without code changes?** — New advisories land against existing base-image packages.
+
+### Worked example — remediating a Jackson CVE in `payment-service`
+
+```xml
+<dependencyManagement>
+  <dependencies>
+    <dependency>
+      <groupId>com.fasterxml.jackson.core</groupId>
+      <artifactId>jackson-databind</artifactId>
+      <version>2.17.2</version>
+    </dependency>
+  </dependencies>
+</dependencyManagement>
+```
+
+Then prove the fix:
+
+```bash
+mvn -q dependency:tree | grep jackson-databind
+trivy image --severity HIGH,CRITICAL registry.example.com/axispay/payment-service:2026.08.15
+```
+
+The evidence is the clean re-scan, not the merged PR.
+
+One subtle benefit of this workflow is cultural: developers learn that a vulnerability report is not an argument with security but a reproducible engineering task. Find the component, decide whether it is reachable, patch it or document the exception, rebuild, and prove the result with a second scan. That repeatable loop is what makes vulnerability management sustainable.
+
+---
+
+# 5.10 Audit Logging and PCI-DSS Compliance
+
+## 1. What it is
+
+Audit logging is the durable record of administrative and business-significant action.
+
+| Layer | Records |
+|---|---|
+| Kubernetes audit logs | who accessed cluster objects, Secrets, `pods/exec`, RBAC |
+| application audit logs | who changed payment or ledger state |
+
+## 2. Why it exists
+
+PCI-DSS requirement 10 requires traceable access and activity records. Debug logs and cluster events are not enough. An audit log is durable, reviewable and harder to tamper with.
+
+## 3. The business problem
+
+AxisPay's acquiring partner asks: who read or modified Secrets, who changed RBAC, and who opened a shell in a pod that handles cardholder data last month? Without audit logs, the answer is reconstruction by memory. With them, it is a query.
+
+## 4. How it works
+
+Kubernetes audit policies support four levels:
+
+| Level | Records |
+|---|---|
+| `None` | nothing |
+| `Metadata` | who, when, resource, verb, source IP, code |
+| `Request` | metadata plus request body |
+| `RequestResponse` | request and response bodies |
+
+For a PCI-scoped payments platform, the useful pattern is selective depth:
+
+| Resource / action | Level |
+|---|---|
+| `pods/exec`, `pods/portforward`, secret reads | `Metadata` |
+| Secret writes, RBAC changes | `Request` |
+
+Application audit records in `payment-service` and `core-service` should capture actor, transaction ID, old state, new state and correlation ID, retained for one year with three months immediately available.
+
+A useful application-audit schema is:
+
+| Field | Example |
+|---|---|
+| actor | `merchant-api-key:mk_7741` |
+| transaction_id | `pay_7F1K` |
+| old_state | `AUTHORIZED` |
+| new_state | `CAPTURED` |
+| correlation_id | shared cross-service trace |
+| previous_hash / current_hash | tamper-evident chain |
+
+## 5. Internal architecture
+
+API-server audit logging usually flows:
+
+```text
+API server → audit file or webhook → collector → SIEM / durable store
+```
+
+Application audit logging should be append-only and separate from debug logging.
+
+## 6. Component interactions
+
+```
+kubectl exec / get secret / patch rolebinding
+   → API server
+   → audit event
+   → collector
+   → durable store
+
+payment or ledger state change
+   → application audit record
+   → append-only store
+```
+
+## 7. Enterprise example
+
+A processor kept API audit files only on control-plane nodes and rotated them daily. During an investigation, the `exec` evidence had already expired. They had logging, but not retention.
+
+## 8. Real-world analogy
+
+The audit log is the vault access register. The ledger is the record of what happened to the money.
+
+**Where it breaks**
+
+Kubernetes audit logs show that `exec` happened. They usually do **not** show every command typed in an interactive shell.
+
+## 9. Best practices
+
+- Log secret access, `pods/exec`, and RBAC changes explicitly.
+- Ship API audit logs off-node immediately.
+- Keep application audit logs append-only and tamper-evident.
+- Restrict access to audit data.
+- Retain one year, with three months hot.
+
+## 10. Common mistakes
+
+| Mistake | What happens |
+|---|---|
+| everything at `RequestResponse` | large volume, sensitive over-capture |
+| audit logs only on-node | evidence disappears with rotation |
+| debug logs treated as audit | wrong retention and mutability |
+| assuming `exec` logs shell commands | investigation gap remains |
+
+## 11. Security considerations
+
+Audit logs themselves are sensitive. They expose identities, IPs, object names and sometimes payloads.
+
+The important `kubectl exec` limitation is real:
+
+- API audit logs record the request
+- non-interactive commands may appear in the URI
+- interactive shell keystrokes usually do not
+
+If AxisPay needs shell-session content, it needs session recording in a bastion or access proxy.
+
+## 12. Performance considerations
+
+Audit logging adds write volume to the API server. Selective policy matters. Application audit writes should be durable and asynchronous, but not lossy.
+
+## 13. High availability
+
+The audit pipeline needs replicated collectors and a durable sink. A perfect audit policy with a dead shipping path is a quiet failure.
+
+## 14. Disaster recovery
+
+Audit data is evidence, not just observability. Recovery must preserve recent searchable records, long-term archive, and the procedure to restore both.
+
+## 15. Monitoring
+
+Alert on rare actions:
+
+- any `pods/exec` in PCI-scoped namespaces
+- any human read of Secrets
+- any ClusterRoleBinding change
+- audit shipping lag
+
+## 16. Troubleshooting
+
+| Symptom | Cause | Command |
+|---|---|---|
+| secret read missing from audit trail | policy too narrow | inspect audit policy |
+| `exec` event present, commands absent | expected limitation | use session recording |
+| RBAC body missing | level too low | raise RBAC resources to `Request` |
+
+## Interview questions
+
+1. **What is the difference between `Metadata` and `Request`?** — `Request` includes the request body.
+2. **Why audit `pods/exec` in a PCI namespace?** — It is a privileged access path into sensitive workloads.
+3. **What is the key limitation of API audit logs for `kubectl exec`?** — Interactive shell commands are usually not captured.
+4. **Why are app audit logs still required?** — Kubernetes logs cluster action, not payment-state transitions.
+5. **What retention pattern is common for PCI?** — One year retained, three months immediately available.
+
+### Worked example — investigating a suspicious `kubectl exec`
+
+An alert shows `pods/exec` against a `payment-service` pod. The investigation asks:
+
+1. who initiated it — username, groups, source IP, user agent
+2. what target — namespace, pod, container, response code
+3. what possible exposure — mounted Secrets, service function, cardholder-data path
+4. what secondary evidence exists — bastion logs or session recording
+
+The useful discipline is knowing what the audit log proves, and what other controls must fill the gap.
+
+---
+
+# 5.11 AxisPay RBAC Role Design
+
+## 1. What it is
+
+This is the concrete RBAC catalogue for AxisPay personas.
+
+## 2. Why it exists
+
+Least privilege is not a slogan. It is a specific list of verbs, resources and namespaces for named groups.
+
+## 3. The business problem
+
+An access review found that fraud analysts could read Secrets cluster-wide. The intended requirement had been simple: read `fraud-service` logs in one namespace. The actual grant came from an overly broad ClusterRoleBinding.
+
+## 4. How it works
+
+Start with personas:
+
+| Persona | Namespace | Logs | Exec | Secrets |
+|---|---|---:|---:|---:|
+| fraud-analyst | `axispay-risk` | yes | no | no |
+| payments-oncall | `axispay-core` | yes | yes | no |
+| platform-admin | cluster-wide | yes | yes | broad |
+
+Example roles:
+
+```yaml
+kind: Role
+metadata:
+  name: fraud-analyst
+  namespace: axispay-risk
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "pods/log", "events"]
+    verbs: ["get", "list", "watch"]
+```
+
+```yaml
+kind: Role
+metadata:
+  name: payments-oncall
+  namespace: axispay-core
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "pods/log", "pods/exec", "events", "services"]
+    verbs: ["get", "list", "watch", "create"]
+```
+
+```yaml
+kind: ClusterRole
+metadata:
+  name: platform-admin
+rules:
+  - apiGroups: ["*", ""]
+    resources: ["*"]
+    verbs: ["*"]
+```
+
+And the bindings are intentionally different:
+
+| Role | Binding type | Reason |
+|---|---|---|
+| fraud-analyst | RoleBinding | scope stays inside `axispay-risk` |
+| payments-oncall | RoleBinding | incident access only in `axispay-core` |
+| platform-admin | ClusterRoleBinding | genuinely cluster-scoped operations |
+
+## 5. Internal architecture
+
+The useful pattern is define permissions once, bind them narrowly:
+
+| Object | Answers |
+|---|---|
+| Role / ClusterRole | what may be done |
+| RoleBinding / ClusterRoleBinding | where and by whom |
+
+## 6. Component interactions
+
+```
+SSO group claim
+   → binding selected
+   → rules unioned
+   → request allowed or denied
+```
+
+The proof is `kubectl auth can-i`, including denials.
+
+## 7. Enterprise example
+
+A support team reused a broad convenience ClusterRole for every engineer. It solved tickets quickly and quietly granted secret-reading paths everywhere. The eventual fix looked like AxisPay's model: narrow read role, audited incident role, small admin group.
+
+## 8. Real-world analogy
+
+Fraud analysts read the chart. Payments on-call enters the treatment room. Platform admin holds the building master key.
+
+**Where it breaks**
+
+Real buildings can deny a person at one door and allow them at another. Kubernetes RBAC has no deny. Any binding that grants a permission wins.
+
+## 9. Best practices
+
+- Bind groups, not individuals.
+- Keep fraud analysis read-only.
+- Grant `pods/exec` only to incident or admin roles.
+- Never bundle Secret access into log-reading roles.
+- Review the aggregate permissions quarterly.
+
+## 10. Common mistakes
+
+| Mistake | What happens |
+|---|---|
+| ClusterRoleBinding used by reflex | access leaks to every namespace |
+| `pods/exec` added for convenience | log readers become secret readers in practice |
+| temporary incident grant left behind | emergency access becomes permanent |
+
+## 11. Security considerations
+
+`payments-oncall` is intentionally narrow in namespace and broad in incident power. It has no `secrets` grant and still implies secret access through `pods/exec`, which is why every use must be audited.
+
+## 12. Performance considerations
+
+The real performance issue is human. A role too narrow makes every incident wait for admin. A role too broad removes the control entirely.
+
+## 13. High availability
+
+Keep a break-glass admin credential outside the normal IdP path, and avoid making routine support depend on `platform-admin`.
+
+## 14. Disaster recovery
+
+Store the role catalogue and the SSO group mapping. Restoring YAML without restoring group membership restores objects, not access.
+
+## 15. Monitoring
+
+The useful review matrix is:
+
+| Check | Expected |
+|---|---|
+| fraud-analyst can get `pods/log` in `axispay-risk` | yes |
+| fraud-analyst can get `secrets` anywhere | no |
+| payments-oncall can create `pods/exec` in `axispay-core` | yes |
+| payments-oncall can get `secrets` in `axispay-core` | no |
+
+## 16. Troubleshooting
+
+| Symptom | Cause | Command |
+|---|---|---|
+| analyst cannot read logs | missing `pods/log` subresource | `kubectl auth can-i get pods/log ...` |
+| on-call cannot exec | wrong verb on `pods/exec` | grant `create` |
+| user has access outside intended namespace | accidental ClusterRoleBinding | inspect bindings |
+
+## Interview questions
+
+1. **Why should `fraud-analyst` not include `pods/exec`?** — Because exec is a path to secret values and admin power.
+2. **Why can `payments-oncall` exec but not read Secrets directly?** — Incident response needs shell access in one namespace; direct secret browsing remains disallowed.
+3. **What caused the AxisPay least-privilege failure?** — An overly broad ClusterRoleBinding.
+4. **Why bind groups rather than users?** — Easier review, removal and rotation.
+5. **What is the proof after fixing an over-grant?** — `kubectl auth can-i` for the intended allows and denials.
+
+### Worked example — fixing the least-privilege violation
+
+The bad state was a ClusterRoleBinding granting fraud analysts `get secrets` cluster-wide. The fix is:
+
+1. remove the broad ClusterRoleBinding
+2. create the `fraud-analyst` Role in `axispay-risk`
+3. bind it only in that namespace
+4. prove:
+
+```bash
+kubectl auth can-i get pods/log -n axispay-risk --as=fraud.analyst@axis.example
+kubectl auth can-i get secrets  -n axispay-risk --as=fraud.analyst@axis.example
+kubectl auth can-i get secrets  -n axispay-core --as=fraud.analyst@axis.example
+```
+
+Expected: `yes`, `no`, `no`.
+
+---
+
+# 5.12 Incident Response Playbook for AxisPay
+
+This section is a runbook, not a theory chapter. The common rules are simple:
+
+| Principle | Why |
+|---|---|
+| stabilise first | the system must stop getting worse |
+| preserve evidence | payments incidents become compliance questions quickly |
+| define scope early | leadership wants counts, time window and exposure |
+
+## Scenario A — unauthorised use of an `auth-service` API token
+
+The signal is anomalous traffic: a token that normally reads merchant profile data now drives bursts of session and validation requests from a new network.
+
+The response path is:
+
+1. open the incident and assign commander, comms owner and technical lead
+2. identify the token, time window, source IPs, endpoints and affected clients
+3. revoke or rotate the token immediately
+4. query `auth-service` and downstream audit logs to see what it touched
+5. check Kubernetes audit logs for secret reads, RBAC changes, `pods/exec` or image changes around the same time
+6. notify compliance if cardholder data may have been touched
+7. remove the leak path — code, log sink, Secret exposure or credential handling flaw
+8. restore service only after replacement credentials are distributed and tested
+
+The mistake to avoid is treating revocation as closure. It stops active misuse. It does not answer what data was reached or how the token leaked.
+
+Questions leadership will ask quickly:
+
+| Question | Evidence |
+|---|---|
+| which clients were affected? | `auth-service` access and audit logs |
+| was cardholder data touched? | downstream `payment-service` and `core-service` trails |
+| how long was exposure open? | first anomalous event to revocation time |
+
+## Scenario B — payment integrity violation: double charge or ledger mismatch
+
+The signals are duplicate captures, merchant complaints, or reconciliation drift between `payment-service` and `core-service`.
+
+The response path is:
+
+1. treat it as Sev-1 until proven otherwise
+2. freeze the faulty path — fail readiness, disable a consumer, or scale the deployment to zero if necessary
+3. capture version, config, feature-flag state and queue offsets before rollback
+4. define affected merchants, payment IDs, currencies and time window
+5. reconcile the truth set: gateway requests, payment events, acquirer responses and `core-service` ledger entries
+6. stop the faulty automation, often a retry path or idempotency defect
+7. execute compensating transactions: reversals, refunds or corrective ledger entries
+8. declare recovery only when the money and ledger agree
+9. add detection for recurrence: duplicate-charge ratio, idempotency-key reuse, reconciliation lag
+
+The reconciliation set is always larger than one service:
+
+- payment API request log
+- idempotency key history
+- acquirer response log
+- `payment-service` event trail
+- `core-service` ledger entries
+- merchant-visible order status
+
+What finance, engineering and support each need is different:
+
+| Team | Immediate question |
+|---|---|
+| engineering | what code path or component is wrong right now? |
+| finance-ops | which transactions require reversal, refund or manual review? |
+| merchant support | which merchants need proactive communication before they discover it themselves? |
+
+Containment choices:
+
+| Option | Use when |
+|---|---|
+| fail readiness | traffic must stop, pods should remain for forensics |
+| scale to zero | code is actively harmful |
+| disable consumer or feature flag | background path is faulty, reads can continue |
+
+## Communications and evidence discipline
+
+Both scenarios need:
+
+- a single incident channel
+- UTC timeline
+- affected merchants or transactions
+- audit-log extracts
+- exact remediation times
+
+If cardholder data or financial integrity is in scope, compliance joins early, not at the end.
+
+Evidence preservation is a task in its own right:
+
+| Evidence | Why keep it early |
+|---|---|
+| rollout history | connects the incident to a version or config change |
+| feature-flag state | many integrity incidents are controlled by flags rather than code deploys |
+| audit-log slice | proves administrative actions around the incident window |
+| queue offsets or batch IDs | required to replay or reconcile safely |
+| merchant examples | turns a vague symptom into reproducible evidence |
+
+The incident is not over when the pager quiets down. AxisPay closes only when three conditions are true:
+
+| Closure condition | Token misuse case | integrity case |
+|---|---|---|
+| active harm stopped | token revoked or rotated | faulty processing path frozen |
+| scope known | affected clients and data paths identified | affected transactions and ledger delta quantified |
+| durable fix queued | credential-handling control change agreed | code, reconciliation or alerting change agreed |
+
+The post-incident review should produce five concrete outputs:
+
+1. exact root cause
+2. exposure window
+3. merchant or transaction count
+4. control failure and control improvement
+5. alert or runbook change that would shorten the next incident
+
+## Post-incident outputs that matter
+
+The review must produce control changes:
+
+| Incident | Control improvement |
+|---|---|
+| stolen token | shorter token lifetime, geography anomaly alert, rotation runbook |
+| double charge / ledger mismatch | stronger idempotency, automated reconciliation checks, compensating-transaction playbook |
+
+An incident without a control change is usually rehearsal for the next one.
+
+---
+
 # Day 5 cheat sheet
 
 ## Identity and admission

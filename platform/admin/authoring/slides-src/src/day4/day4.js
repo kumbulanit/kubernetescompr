@@ -1,5 +1,6 @@
 const pptxgen = require("pptxgenjs");
 const L = require("./lib.js");
+const D = require("./diagrams.js");
 const { C } = L;
 
 const p = new pptxgen();
@@ -40,15 +41,16 @@ L.sAsk(p, {
 
 L.sTable(p, {
   chip: "TODAY", title: "What is missing, and what it costs",
+  lead: "A cluster is not production-ready just because pods run. Day 4 adds the platform controls that keep names stable, expose workloads safely, segment traffic, guide scheduling and preserve availability during routine maintenance.",
   head: ["Missing right now", "What it costs you", "Fixed in"],
   colW: [4.0, 5.8, 2.3],
   rows: [
-    ["No route in from outside", "No merchant can integrate. port-forward is not a product.", "L4.3"],
-    ["No TLS", "Card data over plaintext HTTP", "L4.3"],
+    ["No route in from outside", "No user or partner system can reach the app. port-forward is a debugging tunnel, not a product edge.", "L4.3"],
+    ["No TLS", "Credentials and payloads cross the network in clear text.", "L4.3"],
     ["Flat pod network", "The DMZ can read the payments database. A PCI finding.", "L4.4"],
     ["No placement control", "All three payment replicas can land on one node", "L4.5"],
     ["No disruption budget", "A node drain takes every replica at once", "L4.6"],
-    ["DNS still unopened", "You have relied on it for three days", "L4.2"],
+    ["DNS still unopened", "You have relied on names like payment-service for three days without seeing the resolver behind them.", "L4.2"],
   ],
   obj: "Derive the agenda from felt gaps.",
   time: "5 min",
@@ -70,12 +72,13 @@ L.sSection(p, {
 L.sExplain(p, {
   chip: "M4.1 · NETWORKING",
   title: "The four rules Kubernetes demands of any network plugin",
+  lead: "Kubernetes assumes a flat, routable pod network in which every pod is a first-class IP endpoint and cluster components can reach pods directly without host-port translation. The API defines that contract; the CNI plugin turns it into real routes and packet handling.",
   question: "Kubernetes does not implement networking. So what does it actually require?",
   steps: [
-    ["Every pod gets its own IP", "Not a port on a shared host IP. A pod is addressable in its own right, which is why two pods can both listen on 8080 without conflict.", C.teal],
-    ["Pods reach all pods without NAT", "Across nodes, without port mapping and without address translation. The destination sees the source's real IP.", C.teal],
-    ["Nodes reach all pods without NAT", "This is what lets the kubelet run your probes and lets a DaemonSet agent talk to local workloads.", C.teal],
-    ["The IP a pod sees itself as is the IP others see", "No split-horizon. A pod can put its own address in a message and it will be usable by the recipient — which sounds obvious and is not true of Docker's default bridge.", C.green],
+    ["Every pod gets an IP", "A `web-app` pod and an `api` pod each get their own address, so both can listen on 8080 without colliding on one host port.", C.teal],
+    ["Pod-to-pod is direct", "When `web-app` calls `api`, it routes to the pod IP itself. Cross-node traffic should not need port maps or hide the caller's real IP.", C.teal],
+    ["Nodes can reach AxisPay pods", "That is how kubelet probes hit AxisPay pods directly, and how node agents can inspect or scrape `payment-service` without inventing extra host ports.", C.green],
+    ["Pods see their real address", "If `fraud-service` reports its own pod IP in telemetry or a debug trace, `edge-gateway` and every other consumer must be able to use that exact address unchanged.", C.green],
   ],
   kicker: "Kubernetes defines the contract; Calico, Cilium or Flannel implement it. That is why the CNI choice matters so much on Thursday.",
   obj: "Explain the CNI contract before students depend on one specific behaviour of it.",
@@ -87,14 +90,15 @@ L.sExplain(p, {
 
 L.sTable(p, {
   chip: "M4.2 · SERVICES", title: "Five Service types — choose by what you need",
+  lead: "A Kubernetes Service gives clients a stable virtual endpoint — DNS name plus, usually, a ClusterIP — while controllers keep its backend set aligned with label-selected ready pods. Clients talk to the Service; kube-proxy or the CNI steers each new connection to one backend.",
   head: ["Type", "What it does", "Use it when"],
   colW: [2.5, 5.0, 4.6],
   rows: [
-    ["ClusterIP", "Virtual IP, reachable only inside the cluster", "Service-to-service. The default, and 90% of cases."],
-    ["NodePort", "Opens the SAME port on EVERY node", "Development. In production it is an attack surface."],
-    ["LoadBalancer", "Asks the cloud for a load balancer", "Cloud production. Not available on Minikube."],
-    ["ExternalName", "A CNAME. No proxy, no endpoints.", "Giving an external dependency a stable in-cluster name"],
-    ["Headless (clusterIP: None)", "DNS returns POD IPs, not a virtual IP", "StatefulSets; gRPC client-side load balancing"],
+    ["ClusterIP", "Stable virtual IP, reachable only inside the cluster", "Inside a cluster — for example, `web-app` calling `checkout-api` by DNS."],
+    ["NodePort", "Opens the SAME port on EVERY node", "Quick demos or lab access to a `web-app`; in production it widens attack surface."],
+    ["LoadBalancer", "Asks the cloud or metal LB for an external VIP", "Publishing AxisPay's `edge-gateway` on a cloud-managed public address."],
+    ["ExternalName", "A DNS CNAME only. No proxy, no endpoints.", "Giving an external fraud or banking endpoint a stable in-cluster name for AxisPay callers."],
+    ["Headless (clusterIP: None)", "DNS returns pod IPs/SRV records, not one VIP", "Returning individual `postgres` pod addresses when AxisPay needs StatefulSet identity or client-side balancing."],
   ],
   rowH: 0.66,
   obj: "Complete the Service taxonomy started on Day 1.",
@@ -102,6 +106,14 @@ L.sTable(p, {
   script: "The headless row deserves the time. kube-proxy load-balances CONNECTIONS, not requests — so a single long-lived HTTP/2 connection pins to one pod forever. gRPC multiplexes everything over one connection, so a normal Service gives you no balancing at all. A headless Service hands the client every address and lets it decide.\\n\\nThat is not an edge case; it is the single most common gRPC-on-Kubernetes surprise.",
   ask: "Why is NodePort discouraged in production?",
   answer: "It opens a port on EVERY node in the cluster, including nodes running nothing related. That is a large attack surface for one service, and it bypasses the Ingress where your TLS, rate limiting and routing rules live.",
+});
+
+D.dServiceTypes(p, {
+  chip: "M4.2 · SERVICES",
+  title: "How ClusterIP, NodePort and LoadBalancer differ on the wire",
+  obj: "Make the three main exposure patterns visible without YAML.",
+  time: "4 min",
+  script: "Read left to right: internal VIP only, then the same port opened on every node, then an external load balancer fronting the Service. Stress that the Service abstraction stays the same while only the entry path changes."
 });
 
 L.sLab(p, {
@@ -133,12 +145,13 @@ L.sSection(p, {
 L.sExplain(p, {
   chip: "M4.4 · INGRESS",
   title: "Two objects, and confusing them is the usual failure",
+  lead: "An Ingress is a declarative HTTP(S) routing resource that stores host, path and TLS rules, but it never accepts traffic by itself. A separate controller watches those rules, programs a real reverse proxy and publishes the edge address clients actually connect to.",
   question: "You apply an Ingress. Nothing happens. Why?",
   steps: [
-    ["The Ingress RESOURCE", "A document describing rules: hosts, paths, backends, TLS. Creating it changes nothing on its own — it is data, not behaviour.", C.teal],
-    ["The Ingress CONTROLLER", "A program (ingress-nginx, Traefik, HAProxy) that WATCHES Ingress resources and configures itself to proxy accordingly. This is the thing that actually moves packets.", C.green],
-    ["No controller = nothing happens", "kubectl get ingress shows your object happily, with an EMPTY ADDRESS. No error, no event. The rules are written and nobody is reading them.", C.red],
-    ["ingressClassName decides who reads it", "On a cluster with several controllers, omitting it means nobody claims your Ingress — or worse, two controllers both do.", C.amberD],
+    ["Generic rule document", "A vanilla Ingress might send `frontend.example.com` to `web-app`, while `/api` on the same host goes to `checkout-api`. It is desired routing state stored in the API.", C.teal],
+    ["Generic controller process", "An ingress-nginx or Traefik deployment watches those rules, opens the listening socket, terminates TLS and forwards matching requests to the right Service.", C.green],
+    ["AxisPay symptom", "If `api.axispay.local` or `merchant.axispay.local` never gets an ADDRESS, the rules exist but no controller is publishing the AxisPay edge.", C.red],
+    ["AxisPay class binding", "When AxisPay sets `ingressClassName`, only the intended controller should claim `edge-gateway`. Omit it and the public route may stay idle or be claimed twice.", C.amberD],
   ],
   kicker: "An empty ADDRESS column is the tell. Check it before you debug anything else.",
   obj: "Prevent the most common Ingress dead-end.",
@@ -146,6 +159,14 @@ L.sExplain(p, {
   script: "On Minikube the controller comes from an addon, so students may never have installed one deliberately and will not think to check.\\n\\nAlso flag pathType. Prefix matches /api and everything below it; Exact matches ONLY the literal path. Changing one word turns a working API into a 404 on every endpoint but one — and that is INC-4a this afternoon.",
   ask: "Your Ingress exists, ADDRESS is populated, and you get a 503. Where is the fault?",
   answer: "Not the Ingress. 503 means the controller found the backend Service and it has no ready endpoints — so the problem is the Service selector or the pods' readiness. A 404 would be the routing rules; a 502 would be the wrong backend port. Those three codes point at three different layers, and knowing which saves ten minutes.",
+});
+
+D.dIngressController(p, {
+  chip: "M4.4 · INGRESS",
+  title: "Ingress rules are data; the controller is the proxy",
+  obj: "Separate the routing resource from the process that handles traffic.",
+  time: "4 min",
+  script: "Point at the pending ADDRESS first. An Ingress without a controller is just stored configuration. Then follow the traffic arrow to show which component listens on 80/443, terminates TLS and forwards to Services."
 });
 
 L.sLab(p, {
@@ -176,12 +197,13 @@ L.sSection(p, {
 L.sExplain(p, {
   chip: "M4.5 · NETWORKPOLICY",
   title: "Three properties that decide everything",
+  lead: "A NetworkPolicy selects pods and declares which ingress and egress connections are allowed to them at Layer 3 and Layer 4 using selectors, CIDRs and ports. It does not create routes or proxies; it constrains traffic that the cluster network would otherwise permit.",
   question: "Why does adding one policy break things you never mentioned in it?",
   steps: [
-    ["DEFAULT-ALLOW until selected", "A pod with no policy selecting it is completely unrestricted. The moment ANY policy selects it, only what a policy explicitly permits is allowed. One narrow policy therefore turns an open pod into a nearly closed one.", C.amberD],
-    ["ADDITIVE — there is no deny rule", "Policies only ever ADD permission. You cannot write 'deny X'. You deny by selecting a pod and then not permitting the traffic. Default-deny is simply podSelector {} with no rules at all.", C.teal],
-    ["BOTH DIRECTIONS, independently", "Egress at the source AND ingress at the destination must both allow a flow. Fixing one and not the other leaves it blocked — and each side is a different object, often in a different namespace.", C.green],
-    ["Enforcement is the CNI's job", "Kubernetes stores the object whatever your plugin does. A CNI without policy support accepts every policy and enforces none — silently.", C.red],
+    ["One selected pod changes mode", "In a simple `frontend` → `backend` app, `backend` is wide open until some policy selects it. After that, only the sources and ports named in policy may still connect.", C.amberD],
+    ["Permission is only additive", "You never write `deny frontend`. To block it, select `backend` and omit `frontend` from the allow-list. A default-deny is simply an empty rule set on `podSelector: {}`.", C.teal],
+    ["AxisPay flow needs both sides", "For `edge-gateway` to call `payment-service`, egress from `axispay-edge` and ingress to `payment-service` must both allow the flow. The same is true again for `payment-service` → `fraud-service`.", C.green],
+    ["AxisPay depends on enforcement", "AxisPay uses Calico to turn these YAML objects into packet filters. If the plugin were present but non-enforcing, every policy would apply cleanly and the DMZ could still reach PostgreSQL.", C.red],
   ],
   kicker: "Deny first, then allow back exactly what you can justify. Building the allow-list first is how you end up with a policy set that looks strict and enforces nothing.",
   obj: "Give the mental model before the lab breaks the platform.",
@@ -189,6 +211,14 @@ L.sExplain(p, {
   script: "Property 1 explains the confusion students are about to have: they add ONE narrow policy to fraud-service and payment-service stops working, even though payment-service is not mentioned anywhere in it. That is INC-4c.\\n\\nProperty 3 is why L4.4 has them fix DNS and then STILL find connections failing. Two separate problems; fixing one does not fix the other.",
   ask: "You want to stop reporting-service reaching the ledger. Which policy do you write?",
   answer: "You do not write a deny. You ensure some policy selects ledger-service and that none of them permit ingress from reporting-service. Absence of permission IS the denial. People look for a deny rule for a long time before this lands.",
+});
+
+D.dNetworkPolicyMode(p, {
+  chip: "M4.5 · NETWORKPOLICY",
+  title: "A selected pod flips from open to allow-listed",
+  obj: "Show default-allow-until-selected with a before/after contrast.",
+  time: "4 min",
+  script: "Use the left half to remind them that namespaces are not firewalls. Then show that the first selecting policy changes the target pod into an allow-list model, which is why one narrow rule can appear to break unrelated callers."
 });
 
 L.sCode(p, {
@@ -265,12 +295,13 @@ L.sSection(p, {
 L.sExplain(p, {
   chip: "M4.6 · PLACEMENT",
   title: "required vs preferred — and the HPA it silently caps",
+  lead: "Scheduler affinity rules come in hard and soft forms. `requiredDuringSchedulingIgnoredDuringExecution` is a gate that must pass before placement, while `preferredDuringSchedulingIgnoredDuringExecution` is a weighted hint the scheduler tries to honor without blocking the pod if capacity is tight.",
   question: "Both spread your pods. Why does AxisPay use one for payment-service and the other for fraud-service?",
   steps: [
-    ["required...IgnoredDuringExecution", "A HARD filter. If no node satisfies it, the pod stays Pending FOREVER. There is no degraded mode and no warning beyond the scheduler event.", C.red],
-    ["payment-service uses required", "One replica per node, absolutely. The payment path must survive a node loss, and three replicas on one node is worse than two on two — it looks like redundancy and is not.", C.green],
-    ["The hard limit", "With required anti-affinity on hostname you can NEVER have more replicas than nodes. Scale to 4 on a 3-node cluster and the fourth is Pending permanently.", C.amberD],
-    ["fraud-service uses preferred", "Its HPA scales to 6. A hard rule would silently cap autoscaling at the node count — and the symptom, pods Pending during a traffic spike, looks nothing like the cause.", C.teal],
+    ["required is a gate", "A generic `web-app` with required anti-affinity stays Pending if every node already has a matching replica. Hard rules protect spread by refusing to schedule.", C.red],
+    ["payment-service uses required", "For a critical replicated workload, sharing one failure domain is worse than leaving one replica unscheduled. AxisPay applies that to `payment-service`: three replicas on one node look redundant but fail together.", C.green],
+    ["AxisPay hits a hard limit", "With required anti-affinity on hostname, `payment-service` can never have more replicas than nodes. Scale to 4 on a 3-node cluster and the fourth stays Pending.", C.amberD],
+    ["fraud-service uses preferred", "For autoscaled or bursty workloads, a soft anti-affinity rule preserves spread when possible without turning node count into a hidden ceiling. AxisPay uses that for `fraud-service` because its HPA scales to 6 and must keep scheduling during spikes.", C.teal],
   ],
   kicker: "Same intent, different failure mode. For an autoscaled service, preferred is the only safe choice.",
   obj: "Explain a choice students will otherwise make by coin-flip.",
@@ -281,17 +312,71 @@ L.sExplain(p, {
 });
 
 L.sTable(p, {
+  chip: "M4.6 · PLACEMENT",
+  title: "Three ways to influence WHERE a pod lands — in order of power",
+  lead: "Pod placement can be influenced from the pod spec in three distinct ways: by matching node labels directly, by expressing richer node rules, or by placing relative to other pods already running. All three answer 'which node?' from the pod's side; the next slide covers the node's side.",
+  head: ["Mechanism", "What it matches", "When to reach for it"],
+  colW: [2.5, 4.75, 4.85],
+  rows: [
+    ["nodeSelector", "Exact-match key/value labels on the node, for example `accelerator: nvidia`. The simplest mechanism: a flat map, AND-ed together, with no operators. If no node matches every key, the pod stays Pending.", "Simple, fixed constraints — for example, run `gpu-workload` only on nodes labelled `accelerator: nvidia`."],
+    ["nodeAffinity", "The expressive successor to nodeSelector. Supports operators such as `In`, `NotIn`, `Exists`, `Gt`, `Lt` and the same hard-versus-soft split: `required...` blocks placement; `preferred...` biases it.", "Richer node rules or soft preferences — for example, prefer SSD nodes for `checkout-api` without blocking placement elsewhere."],
+    ["podAffinity / podAntiAffinity", "Matches LABELS ON OTHER PODS already running, not node labels. AxisPay uses pod anti-affinity so two `payment-service` replicas do not share one node.", "Co-location or spread relative to other workloads — for example, keeping AxisPay replicas apart or placing helpers beside the workload they serve."],
+  ],
+  rowH: 0.88,
+  obj: "Separate the three placement tools so students stop using the names interchangeably.",
+  time: "7 min",
+  script: "Teach these as a ladder, not as synonyms. nodeSelector is the blunt instrument: exact labels only. nodeAffinity is the grown-up version: operators plus hard-versus-soft behavior. podAffinity and podAntiAffinity are a different category entirely because they reason about other pods, not the node's labels.\\n\\nThe production mistake is reaching for pod anti-affinity when the real requirement is about node hardware, or reaching for required node affinity when a soft preference was safer.",
+  ask: "Your pod needs `disktype: ssd` — do you reach for nodeSelector or nodeAffinity?",
+  answer: "Either works for that simple case. Use nodeSelector when exact-match AND logic is enough and you do not need preferences. Reach for nodeAffinity when you need operators like NotIn or Exists, or a soft preference instead of a hard requirement.",
+});
+
+D.dAffinityTypes(p, {
+  chip: "M4.6 · PLACEMENT",
+  title: "NodeAffinity matches node labels; PodAntiAffinity matches other pods",
+  obj: "Separate node facts from workload-relative placement.",
+  time: "4 min",
+  script: "On the left, the scheduler is reading labels on candidate nodes. On the right, it is reading labels on pods that already exist and then inferring which nodes are acceptable. Those are different questions with different failure modes."
+});
+
+L.sExplain(p, {
+  chip: "M4.6 · PLACEMENT",
+  title: "Taints and tolerations — the node's side of the conversation",
+  lead: "Taints and tolerations invert the normal placement model: a node advertises a repelling rule, and only pods that explicitly tolerate it remain eligible to stay or land there. Kubernetes uses them to reserve special hardware, protect control-plane nodes and coordinate maintenance.",
+  question: "Affinity is the pod asking for a node. How does a NODE refuse pods it doesn't want?",
+  steps: [
+    ["A taint marks the node", "A node tainted `accelerator=nvidia:NoSchedule` tells the scheduler that ordinary pods should stay away. The refusal lives on the node, not in the workload spec.", C.red],
+    ["A toleration is a pass", "A `gpu-job` pod with the matching toleration becomes eligible to land there, but it is not pulled there automatically; an untainted node may still win.", C.teal],
+    ["AxisPay still sees three effects", "On AxisPay nodes, `NoSchedule` keeps ordinary apps off the control plane, `PreferNoSchedule` is a soft nudge, and `NoExecute` is the maintenance lever that also evicts running pods.", C.amberD],
+    ["Why your Day 2 DaemonSet needed one", "A common example is the control-plane taint `node-role.kubernetes.io/control-plane:NoSchedule`, which keeps ordinary app pods off that node by default. Your `node-agent` DaemonSet needed a matching toleration because it was meant to run everywhere, including the tainted control-plane node.", C.green],
+  ],
+  kicker: "Affinity is attraction from the pod. A taint is refusal from the node. A toleration does not attract — it only lifts the refusal.",
+  obj: "Teach taints and tolerations as a distinct mechanism, not a mysterious YAML line copied from examples.",
+  time: "7 min",
+  script: "Students often think a toleration is a placement preference. Kill that idea explicitly: a toleration only removes a 'no' from the node; it does not create a 'yes'. You still need normal scheduling logic to make the node attractive.\\n\\nTie it back to the control-plane node because they already saw it in practice on Day 2. The reason regular apps avoid the control-plane is not magic and not a hidden role — it is a taint. The reason the node-agent could run there is not privilege — it is a toleration.",
+  ask: "A node is tainted with `NoExecute` for maintenance. What happens to pods already running there that have no matching toleration?",
+  answer: "They are evicted. `NoExecute` affects both future scheduling and pods already on the node. If a pod does tolerate it with `tolerationSeconds`, it can stay only for that grace period before eviction.",
+});
+
+D.dTaintsTolerations(p, {
+  chip: "M4.6 · PLACEMENT",
+  title: "A taint repels by default; a toleration only lifts the block",
+  obj: "Make the direction of control explicit.",
+  time: "4 min",
+  script: "Show the blocked pod first. Then show that the tolerated pod is merely eligible, not attracted. Finish on NoExecute: it is the only effect that also pushes existing pods off the node."
+});
+
+L.sTable(p, {
   chip: "M4.7 · DISRUPTION", title: "PodDisruptionBudget — what it does and does not do",
-  lead: "It gates VOLUNTARY disruption only. Nothing protects against a node crashing.",
+  lead: "A PodDisruptionBudget tells the eviction API how many replicas of a selected workload must remain available during voluntary operations such as drain or a rolling node upgrade. It does not keep pods alive; it only throttles Kubernetes-initiated evictions.",
   head: ["Event", "PDB applies?", "Why"],
   colW: [4.2, 2.2, 5.7],
   rows: [
-    ["kubectl drain", "YES", "Voluntary. The eviction API respects the budget and waits."],
-    ["Cluster / node-pool upgrade", "YES", "Voluntary. This is the capstone on Friday."],
-    ["Node crashes", "No", "Involuntary. The pods are already gone."],
-    ["OOM kill", "No", "Involuntary. The kernel does not consult Kubernetes."],
-    ["Liveness probe failure", "No", "The kubelet restarts in place; it is not an eviction."],
-    ["kubectl delete pod", "No", "A direct delete bypasses the eviction API entirely."],
+    ["kubectl drain", "YES", "Voluntary. A generic `web-app` PDB is checked before each eviction and drain pauses when the budget is exhausted."],
+    ["Cluster / node-pool upgrade", "YES", "Voluntary. AxisPay's Friday upgrade uses the same eviction path under the hood."],
+    ["Node crashes", "No", "Involuntary. If the node hosting a `payment-service` replica disappears, the budget cannot save the pod that vanished with it."],
+    ["OOM kill", "No", "Involuntary. If a `fraud-service` container exhausts memory, the kernel kills it locally without asking the eviction API."],
+    ["Liveness probe failure", "No", "An `edge-gateway` restart happens in place on the node; it is not a drain-time eviction."],
+    ["kubectl delete pod", "No", "`kubectl delete pod payment-service-...` bypasses the eviction API entirely."],
   ],
   rowH: 0.56,
   obj: "Set the boundary of what a PDB can promise.",
@@ -299,6 +384,14 @@ L.sTable(p, {
   script: "The last row surprises people: `kubectl delete pod` is NOT gated by a PDB. Only the eviction API is, and `drain` uses it. A careless delete bypasses your budget entirely.\\n\\nAlso flag the minAvailable trap: with an HPA, an absolute minAvailable can equal the current replica count at minReplicas, making ALLOWED DISRUPTIONS zero and the node undrainable. A node that cannot be drained cannot be patched. Prefer maxUnavailable.",
   ask: "Your PDB says minAvailable: 3 and the HPA has scaled down to 3. What happens when you drain?",
   answer: "Nothing — forever. Zero disruptions are allowed, so the drain hangs and the node can never be maintained. This is a real production trap and the reason AxisPay uses maxUnavailable everywhere.",
+});
+
+D.dPdbDrain(p, {
+  chip: "M4.7 · DISRUPTION",
+  title: "During drain, the PDB allows one eviction and then blocks the next",
+  obj: "Visualise allowed disruptions as a moving budget.",
+  time: "4 min",
+  script: "Walk the sequence slowly: with three ready replicas and `minAvailable: 2`, the first eviction is fine, the second is blocked until a replacement becomes Ready elsewhere. That is what turns a drain into a rolling movement instead of a cliff."
 });
 
 L.sLab(p, {
@@ -368,12 +461,12 @@ L.sStats(p, {
 
 L.sTable(p, {
   chip: "TOMORROW", title: "Day 5 — hand it to the on-call team",
-  lead: "The platform is exposed, segmented and placed. Nobody can see what it is doing.",
+  lead: "Running workloads is only the middle of operating Kubernetes. After discovery, exposure, segmentation, placement and safe disruption control come the platform capabilities that make access least-privilege, changes repeatable and failures observable.",
   head: ["What is missing", "What it costs", "Fixed in"],
   colW: [4.2, 5.6, 2.3],
   rows: [
-    ["No RBAC", "Every ServiceAccount can do anything. Nothing is least privilege.", "L5.2"],
-    ["Pod Security not enforced", "A workload that forgets securityContext is still admitted", "L5.1"],
+    ["No RBAC", "Any ServiceAccount can read or change what it should not. Least privilege does not exist.", "L5.2"],
+    ["Pod Security not enforced", "A pod that forgets safe defaults is still admitted.", "L5.1"],
     ["Deploying means 40 kubectl applies", "No packaging, no versioning, no one-command rollback", "L5.3"],
     ["No metrics, no dashboards", "You cannot operate what you cannot see", "L5.5"],
     ["No log aggregation", "Tracing one payment means kubectl logs across 15 services", "L5.6"],

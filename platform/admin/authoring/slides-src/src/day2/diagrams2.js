@@ -78,6 +78,79 @@ function dCascade(pres, o) {
   L.foot(s, pres); s.addNotes(L.notes(o)); return s;
 }
 
+// --- namespace isolation -----------------------------------------------------
+function dNamespace(pres, o) {
+  const s = L.newSlide(pres);
+  L.chip(s, o.chip, C.teal); L.heading(s, o.title);
+  s.addShape("roundRect", { x: 0.72, y: 1.95, w: 11.9, h: 3.95, fill: { color: "F7F9FC" },
+    line: { color: C.rule }, rectRadius: 0.08 });
+  s.addText("One cluster", { x: 0.95, y: 2.08, w: 1.4, h: 0.3, fontFace: F.head, fontSize: 16,
+    bold: true, color: C.navy, margin: 0 });
+  s.addShape("roundRect", { x: 1.05, y: 2.5, w: 5.0, h: 2.85, fill: { color: "FFFFFF" },
+    line: { color: C.teal }, rectRadius: 0.08 });
+  s.addShape("roundRect", { x: 7.25, y: 2.5, w: 5.0, h: 2.85, fill: { color: "FFFFFF" },
+    line: { color: C.purple }, rectRadius: 0.08 });
+  s.addText("namespace: team-a", { x: 1.3, y: 2.72, w: 2.3, h: 0.3, fontFace: F.head, fontSize: 15,
+    bold: true, color: C.teal, margin: 0 });
+  s.addText("namespace: team-b", { x: 7.5, y: 2.72, w: 2.3, h: 0.3, fontFace: F.head, fontSize: 15,
+    bold: true, color: C.purple, margin: 0 });
+  box(s, 1.42, 3.18, 1.75, 0.78, "Service", "web", C.navy3);
+  box(s, 3.86, 3.18, 1.75, 0.78, "StatefulSet", "db", C.navy3);
+  box(s, 1.42, 4.22, 1.75, 0.78, "Pod", "web-7fd8", C.green);
+  box(s, 3.86, 4.22, 1.75, 0.78, "Pod", "db-0", "8A93A0");
+  box(s, 7.62, 3.18, 1.75, 0.78, "Service", "web", C.navy3);
+  box(s, 10.06, 3.18, 1.75, 0.78, "StatefulSet", "db", C.navy3);
+  box(s, 7.62, 4.22, 1.75, 0.78, "Pod", "web-2ac4", C.green);
+  box(s, 10.06, 4.22, 1.75, 0.78, "Pod", "db-0", "8A93A0");
+  s.addText("same object names are legal because the namespace qualifies identity", {
+    x: 2.0, y: 5.43, w: 8.9, h: 0.28, fontFace: F.body, fontSize: 10.5, italic: true,
+    color: C.muted, align: "center", margin: 0
+  });
+  s.addText("quota, RBAC and defaults attach per namespace; traffic is NOT isolated unless NetworkPolicy says so",
+    { x: M, y: 6.28, w: W - 2 * M, h: 0.42, fontFace: F.body, fontSize: 14, bold: true,
+      color: C.navy, align: "center", margin: 0 });
+  L.foot(s, pres); s.addNotes(L.notes(o)); return s;
+}
+
+// --- requests vs limits ------------------------------------------------------
+function dReqLimit(pres, o) {
+  const s = L.newSlide(pres, true);
+  L.chip(s, o.chip, C.amberD); L.heading(s, o.title, true);
+  s.addText("scheduler sees REQUESTS", { x: 0.95, y: 1.95, w: 3.9, h: 0.3, fontFace: F.head,
+    fontSize: 15, bold: true, color: C.teal, align: "center", margin: 0 });
+  s.addText("kernel enforces LIMITS", { x: 8.45, y: 1.95, w: 3.9, h: 0.3, fontFace: F.head,
+    fontSize: 15, bold: true, color: C.amber, align: "center", margin: 0 });
+  s.addShape("roundRect", { x: 0.8, y: 2.3, w: 4.15, h: 3.7, fill: { color: C.navy2 },
+    line: { color: C.teal }, rectRadius: 0.1 });
+  s.addText("Node allocatable\n2000m CPU", { x: 1.0, y: 2.45, w: 3.75, h: 0.56, fontFace: F.head,
+    fontSize: 18, bold: true, color: C.white, align: "center", margin: 0 });
+  [["web 500m", C.green], ["api 300m", C.purple], ["worker 700m", C.amberD], ["free 500m", C.codebg]]
+    .reduce((y, r) => {
+      s.addShape("roundRect", { x: 1.25, y, w: 3.25, h: 0.42, fill: { color: r[1] }, line: { color: r[1] }, rectRadius: 0.05 });
+      s.addText(r[0], { x: 1.25, y, w: 3.25, h: 0.42, fontFace: F.head, fontSize: 12.5, bold: true,
+        color: r[0].startsWith("free") ? C.codetx : C.white, align: "center", valign: "middle", margin: 0 });
+      return y + 0.5;
+    }, 3.1);
+  s.addText("booking only — idle CPU does not change this", { x: 1.05, y: 5.62, w: 3.65, h: 0.32, fontFace: F.body,
+    fontSize: 10.5, color: C.codetx, italic: true, align: "center", margin: 0 });
+  box(s, 5.55, 2.7, 2.2, 0.9, "Pod spec", "request 300m", C.purple);
+  box(s, 5.55, 3.9, 2.2, 0.9, "Same pod", "limit 600m", C.amberD);
+  arrow(s, 5.0, 3.18, 0.45, 0, C.teal, "fits?");
+  arrow(s, 7.85, 4.35, 0.55, 0, C.amber, "cap");
+  s.addShape("roundRect", { x: 8.55, y: 2.3, w: 4.0, h: 3.45, fill: { color: C.navy2 },
+    line: { color: C.amber }, rectRadius: 0.1 });
+  s.addText("Container runtime", { x: 8.8, y: 2.52, w: 3.5, h: 0.34, fontFace: F.head, fontSize: 17,
+    bold: true, color: C.white, align: "center", margin: 0 });
+  box(s, 9.02, 3.02, 3.05, 0.78, "usage 580m", "still allowed", C.green);
+  box(s, 9.02, 4.0, 3.05, 0.88, "usage 750m", "CPU throttled here", C.red);
+  s.addText("memory over limit would be OOMKilled, not slowed", { x: 8.95, y: 5.08, w: 3.2, h: 0.32,
+    fontFace: F.body, fontSize: 10.8, italic: true, color: C.codetx, align: "center", margin: 0 });
+  s.addText("Requests answer 'Can it be placed?' Limits answer 'How far may it run once placed?'",
+    { x: M, y: 6.28, w: W - 2 * M, h: 0.42, fontFace: F.body, fontSize: 14, bold: true,
+      color: C.amber, align: "center", margin: 0 });
+  L.foot(s, pres); s.addNotes(L.notes(o)); return s;
+}
+
 // --- rolling update timeline ------------------------------------------------
 function dRollout(pres, o) {
   const s = L.newSlide(pres, true);
@@ -149,6 +222,44 @@ function dWorkloads(pres, o) {
   L.foot(s, pres); s.addNotes(L.notes(o)); return s;
 }
 
+// --- cronjob / job timeline --------------------------------------------------
+function dCronJob(pres, o) {
+  const s = L.newSlide(pres);
+  L.chip(s, o.chip, C.purple); L.heading(s, o.title);
+  s.addText("time", { x: 0.88, y: 2.05, w: 0.6, h: 0.24, fontFace: F.head, fontSize: 13,
+    bold: true, color: C.muted, margin: 0 });
+  ["22:59", "23:00", "23:03", "23:06", "23:10"].forEach((t, i) => {
+    const x = 1.55 + i * 2.2;
+    s.addShape("line", { x, y: 2.45, w: 0, h: 3.15, line: { color: C.rule, width: 1.2, dash: "dash" } });
+    s.addText(t, { x: x - 0.38, y: 2.12, w: 0.76, h: 0.24, fontFace: F.mono, fontSize: 11.5,
+      color: C.navy, align: "center", margin: 0 });
+  });
+  s.addText("CronJob", { x: 0.82, y: 2.72, w: 0.9, h: 0.24, fontFace: F.head, fontSize: 13,
+    bold: true, color: C.purple, margin: 0 });
+  s.addText("Job", { x: 0.98, y: 3.68, w: 0.6, h: 0.24, fontFace: F.head, fontSize: 13,
+    bold: true, color: C.amberD, margin: 0 });
+  s.addText("Pod", { x: 0.98, y: 4.64, w: 0.6, h: 0.24, fontFace: F.head, fontSize: 13,
+    bold: true, color: C.green, margin: 0 });
+  box(s, 3.0, 2.6, 1.25, 0.62, "0 23 * * *", "", C.purple);
+  arrow(s, 3.62, 3.24, 0, 0.34, C.purple);
+  box(s, 2.68, 3.64, 1.9, 0.68, "Job nightly-report-291", "", C.amberD);
+  arrow(s, 3.62, 4.34, 0, 0.34, C.amberD);
+  box(s, 2.98, 4.62, 1.3, 0.68, "Pod run #1", "", C.green);
+  s.addShape("line", { x: 4.28, y: 4.96, w: 2.05, h: 0, line: { color: C.green, width: 2 } });
+  s.addText("running", { x: 4.77, y: 4.63, w: 1.0, h: 0.22, fontFace: F.body, fontSize: 11,
+    italic: true, color: C.muted, align: "center", margin: 0 });
+  box(s, 6.22, 4.62, 1.05, 0.68, "Complete", "", C.teal);
+  box(s, 7.38, 2.6, 1.25, 0.62, "0 23 * * *", "", C.purple);
+  arrow(s, 8.0, 3.24, 0, 0.34, C.purple);
+  box(s, 7.15, 3.62, 1.7, 0.72, "if prior Job\nstill running", "", C.navy3);
+  box(s, 9.32, 3.64, 1.6, 0.68, "Forbid → skip", "", C.red);
+  arrow(s, 8.88, 3.98, 0.34, 0, C.red);
+  s.addText("CronJob decides WHEN to start; Job decides WHEN the work is finished or failed.",
+    { x: M, y: 6.28, w: W - 2 * M, h: 0.42, fontFace: F.body, fontSize: 14, bold: true,
+      color: C.navy, align: "center", margin: 0 });
+  L.foot(s, pres); s.addNotes(L.notes(o)); return s;
+}
+
 // --- HPA loop ---------------------------------------------------------------
 function dHPA(pres, o) {
   const s = L.newSlide(pres, true);
@@ -179,4 +290,4 @@ function dHPA(pres, o) {
       color: C.amber, align: "center", margin: 0 });
   L.foot(s, pres); s.addNotes(L.notes(o)); return s;
 }
-module.exports = { dProbes, dCascade, dRollout, dWorkloads, dHPA };
+module.exports = { dProbes, dCascade, dNamespace, dReqLimit, dRollout, dWorkloads, dCronJob, dHPA };

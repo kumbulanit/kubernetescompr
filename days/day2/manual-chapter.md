@@ -890,6 +890,1004 @@ Rolling updates are only zero-downtime when readiness probes, `maxUnavailable: 0
 
 ---
 
+# 2.7 Java Memory Management and JVM Tuning in Kubernetes
+
+## 1. What it is
+
+The discipline of sizing a Java process **inside a container** rather than on a bare VM. In Kubernetes, the JVM does not own the whole machine. It lives under a cgroup memory ceiling, and the Java heap is only one consumer under that ceiling.
+
+## 2. Why it exists
+
+The JVM can be perfectly healthy and still be **OOMKilled by the container runtime**. Teams that think "`-Xmx` = memory usage" learn very quickly that metaspace, thread stacks, JIT code cache, direct buffers and JNI allocations do not live inside the Java heap.
+
+## 3. The business problem
+
+AxisPay's `fraud-service` passed every functional test and every canary check. Yet every few hours, under genuine merchant load, one replica disappeared with no Java exception and no useful application log. Then the second replica died. Then the HPA added cold pods that took nearly a minute to warm up, and the fraud decision path slowed enough to push authorisation latency beyond the SLO.
+
+The deployment looked reasonable:
+
+| Setting | Value |
+|---|---|
+| Container memory limit | `2Gi` |
+| JVM flag | `-Xmx2g` |
+| Replicas | 3 |
+| JDK | 17 |
+
+Someone had set the heap equal to the container limit because they "did not want to waste memory". In reality they had left **zero headroom** for everything that is not heap.
+
+## 4. How it works
+
+Kubernetes enforces memory with the container's cgroup limit. The JVM, since JDK 10, is container-aware and can size itself relative to that limit — **if you let it**.
+
+```
+container memory limit = 3Gi
+
+inside that 3Gi:
+  Java heap              ~70%
+  metaspace              variable
+  thread stacks          threads × -Xss
+  direct buffers         NIO / Netty / TLS
+  code cache + GC        variable
+  libc / JVM native      variable
+
+cross 3Gi total -> kernel OOM kill -> exit 137
+```
+
+Two approaches dominate:
+
+| Approach | How it works | Risk |
+|---|---|---|
+| Hard-coded `-Xmx` | Fixed heap size regardless of the container | Easy to set too high and forget native headroom |
+| `-XX:MaxRAMPercentage` | Heap is a percentage of container memory | Safer in containers; scales with the limit |
+
+For containerised Java, `-XX:MaxRAMPercentage` is usually the better default because it keeps the JVM's idea of usable heap tied to the cgroup it is actually running under.
+
+## 5. Internal architecture
+
+The failure boundary is not the heap. It is the **cgroup**.
+
+| Layer | Responsibility | What it sees |
+|---|---|---|
+| Kubernetes manifest | Declares `requests.memory` and `limits.memory` | YAML |
+| kubelet / container runtime | Writes cgroup memory limits | Total process memory |
+| JVM ergonomics | Decides heap, GC threads, compiler threads | Container-aware view of RAM and CPU |
+| Linux kernel | Kills the process when total memory exceeds limit | RSS / working set, not "heap used" |
+
+Important memory areas for a Spring Boot service:
+
+| Memory area | Inside heap? | Why it grows |
+|---|---|---|
+| Object heap | Yes | Request objects, caches, ORM entities |
+| Metaspace | No | Loaded classes, frameworks, proxies |
+| Thread stacks | No | Each request pool / scheduler / GC / JIT thread |
+| Direct buffers | No | NIO, TLS, HTTP clients, Netty, gRPC |
+| Code cache | No | JIT-compiled machine code |
+
+This is why "`heap used below 80%`" and "`pod OOMKilled`" can both be true at the same time.
+
+## 6. Component interactions
+
+```
+Deployment -> container limit 3Gi
+JVM       -> MaxRAMPercentage=70 => heap target ~2.1Gi
+Spring    -> starts threads, loads classes, opens pools
+traffic   -> allocates heap + direct buffers
+kernel    -> observes total process memory
+if total > 3Gi -> OOMKill (137)
+```
+
+The JVM sees the container limit, but the kernel kills on **total** memory, not heap usage. That distinction explains most "mystery" Java OOMs in Kubernetes.
+
+## 7. Enterprise example
+
+A payments platform standardises Java container settings in a shared Helm chart:
+
+| Environment | Memory limit | JVM policy |
+|---|---|---|
+| Small internal service | `768Mi` | `-XX:MaxRAMPercentage=60` |
+| Payment path | `2Gi` to `4Gi` | `-XX:MaxRAMPercentage=65-70` |
+| Batch reconciler | `4Gi+` | `-Xms` closer to `-Xmx`, throughput bias acceptable |
+
+Teams can override, but the default is opinionated: **leave headroom first, then tune the heap**. That policy eliminated most OOMKilled incidents not by making services smaller, but by making the failure mode explicit.
+
+## 8. Real-world analogy
+
+A container memory limit is the total luggage allowance for a flight. The Java heap is the suitcase you planned for clothes. Metaspace, toiletries, a laptop and duty-free purchases are all the other bags you still carry. Filling the suitcase to the exact airline limit does not mean you are safe; it means the first extra kilogram at check-in gets rejected.
+
+**Where it breaks:** an airline weighs at the counter, once. The kernel continuously enforces the limit, and the JVM's native memory can grow after the process has been running for hours.
+
+## 9. Best practices
+
+| Practice | Reason |
+|---|---|
+| Size the container first, then the heap | The heap is only one consumer under the cgroup limit |
+| Prefer `-XX:MaxRAMPercentage` over a blindly copied `-Xmx` | Safer and self-adjusting across environments |
+| Leave **25-35%** headroom outside the heap for Spring Boot services | Metaspace, threads, direct buffers and JIT all need space |
+| Set `-Xms` lower than `-Xmx` for bursty services | Faster scheduling, lower idle footprint |
+| Cap thread counts deliberately | Hundreds of threads mean hundreds of stacks outside the heap |
+| Measure off-heap consumers under load | Heap graphs alone do not explain container OOMs |
+| Keep a consistent GC across replicas | Mixed GC behaviour makes latency hard to reason about |
+| Document the JVM flags in the manifest, not only in Dockerfile lore | Incidents start with `kubectl get deploy -o yaml` |
+
+## 10. Common mistakes
+
+| Mistake | Symptom |
+|---|---|
+| `-Xmx` equal to the memory limit | `OOMKilled`, exit 137, heap graphs look "fine" |
+| Copying VM-era JVM flags into containers | Wrong heap size and wrong CPU assumptions |
+| Ignoring direct memory | TLS / HTTP clients fail only under load |
+| Setting `-Xms = -Xmx` on every service | High idle memory, harder bin-packing |
+| Chasing Java heap leaks when the leak is native | Heap dump looks normal; pod still dies |
+| Tiny memory limit with many request threads | Low throughput and random OOMs during traffic spikes |
+
+## 11. Security considerations
+
+| Threat | Control | Residual risk |
+|---|---|---|
+| Heap dumps expose PAN-adjacent or token data | Restrict dump generation and storage; scrub sensitive fields | A crash dump is still sensitive data at rest |
+| Exposed JMX / debug ports leak internals | Disable or bind to localhost; protect with NetworkPolicy | Misconfigured sidecars can still expose them |
+| OOM as an availability attack | Enforce limits and right-size headroom | A single expensive request pattern can still drive memory up |
+| Unsafe diagnostic flags in prod | Standardise approved JVM options | Break-glass changes still happen during incidents |
+
+## 12. Performance considerations
+
+GC choice is a latency trade, not a religion.
+
+| GC | Strength | Weakness | AxisPay fit |
+|---|---|---|---|
+| **G1GC** | Predictable pauses, balanced default on JDK 17 | Some throughput cost versus Parallel | Best default for payment APIs |
+| **Parallel GC** | High throughput | Longer stop-the-world pauses | Good for batch Jobs, risky for p99 latency |
+| **ZGC** | Very low pause times even on large heaps | More operational complexity; not always needed for modest heaps | Consider for very latency-sensitive or large-memory services |
+
+- `payment-service` and `fraud-service` care about p99 latency more than raw throughput, so G1GC is usually the right starting point.
+- Parallel GC can process more work per CPU in batch-style workloads, but its pause profile is a poor fit for synchronous payment authorisation.
+- ZGC is attractive when heap sizes are large enough that even G1 pauses become a business problem, but it should be chosen because measured latency demands it, not because it is fashionable.
+
+## 13. High availability
+
+Right memory sizing is an HA control. A pod that dies every few hours under peak load is not "mostly available" — it is systematically removing redundancy exactly when the system needs it most. JVM tuning also affects rollout safety: if the new version uses more native memory than the old one, a rollout can fail only at scale, after half the pods are already replaced.
+
+## 14. Disaster recovery
+
+JVM flags recover from Git with the manifest, but evidence of the failure may not. OOMKilled pods can disappear before anyone inspects them. During an incident, capture:
+
+1. `kubectl describe pod`
+2. `kubectl top pod --containers`
+3. JVM metrics around heap, GC and threads
+4. The exact runtime flags from `kubectl get pod -o yaml`
+
+If you do not preserve those four, the next restart erases the best clues.
+
+## 15. Monitoring
+
+| Metric / signal | Threshold | Why it matters |
+|---|---|---|
+| `container_memory_working_set_bytes / limit` | > 85% sustained | Container-level risk regardless of heap view |
+| `jvm_memory_used_bytes{area="heap"} / jvm_memory_max_bytes` | > 75-80% sustained | Heap pressure trend |
+| `jvm_gc_pause_seconds` p99 | Rising | Memory pressure often appears as pause inflation first |
+| `jvm_threads_live_threads` | Sudden growth | Thread stacks consume native memory |
+| `kube_pod_container_status_last_terminated_reason{reason="OOMKilled"}` | Any | Page immediately |
+
+## 16. Troubleshooting
+
+Worked incident: `fraud-service` OOMKilled every few hours.
+
+```bash
+kubectl top pod -n axispay-core fraud-service-7c8c7d9d4d-x2v9p
+
+NAME                                   CPU(cores)   MEMORY(bytes)
+fraud-service-7c8c7d9d4d-x2v9p         420m         1886Mi
+```
+
+```bash
+kubectl describe pod -n axispay-core fraud-service-7c8c7d9d4d-x2v9p
+```
+
+```text
+Last State:     Terminated
+  Reason:       OOMKilled
+  Exit Code:    137
+```
+
+The manifest had:
+
+```yaml
+resources:
+  requests:
+    memory: "1536Mi"
+  limits:
+    memory: "2Gi"
+env:
+  - name: JAVA_TOOL_OPTIONS
+    value: "-Xmx2g -XX:+UseG1GC"
+```
+
+The fix:
+
+```yaml
+resources:
+  requests:
+    memory: "2Gi"
+  limits:
+    memory: "3Gi"
+env:
+  - name: JAVA_TOOL_OPTIONS
+    value: "-XX:MaxRAMPercentage=70 -XX:+UseG1GC"
+```
+
+Why it worked:
+
+| Before | After |
+|---|---|
+| Heap fixed at 2g inside 2Gi limit | Heap allowed to grow to ~70% of 3Gi |
+| No room for metaspace / threads / direct buffers | ~900Mi headroom outside heap |
+| OOMKilled, exit 137 | Stable under the same load profile |
+
+Additional checks:
+
+| Symptom | Cause | Command | Fix |
+|---|---|---|---|
+| Heap low, container memory high | Off-heap growth | Compare `container_memory_*` with `jvm_memory_*` | Reduce thread count, direct memory, or raise limit |
+| OOM only during startup | Spring context spikes | `kubectl describe pod`; startup metrics | Raise startup headroom; review `-Xms` |
+| GC pauses spike before OOM | Heap too tight | JVM metrics / GC logs | Increase limit or lower allocation rate |
+| Memory flat, restarts continue | Wrong diagnosis; maybe liveness or node pressure | `describe pod`; node events | Fix the real cause |
+
+## Interview questions
+
+1. **Why can a Java pod be OOMKilled even when the heap is not full?**
+   *Because the container limit applies to total process memory, not only the heap. Metaspace, thread stacks, direct buffers, JIT code cache and other native allocations all count toward the cgroup limit.*
+2. **Why is `-XX:MaxRAMPercentage` usually safer than hard-coded `-Xmx` in Kubernetes?**
+   *Because it sizes the heap relative to the container's memory limit, which is the real boundary in Kubernetes. It reduces the chance that someone copies an old `-Xmx` into a smaller or larger container and leaves the wrong headroom.*
+3. **What is wrong with `-Xmx2g` inside a `2Gi` container?**
+   *It leaves effectively no space for non-heap memory. The JVM may run for a while, but under enough class loading, threads or direct buffer usage the kernel kills it with exit 137.*
+4. **When would you prefer G1GC, Parallel GC or ZGC?** *(senior)*
+   *G1GC for general low-latency service workloads, Parallel GC for throughput-oriented batch processing where pause time matters less, and ZGC when very low pause times on larger heaps are a measured business need. The right choice comes from latency and throughput goals, not ideology.*
+5. **A service is OOMKilled and `kubectl top` never shows it near the limit. What happened?** *(senior)*
+   *`kubectl top` is a scrape of recent usage, not a continuous trace. A transient spike in total process memory can exceed the cgroup limit between samples. That is why termination reason, container memory metrics and JVM metrics together matter more than one top snapshot.*
+
+---
+
+# 2.8 Metrics Collection from Java Applications
+
+## 1. What it is
+
+The path from a Spring Boot application's internal view of itself to Prometheus and alerting. In AxisPay's Java services, **Micrometer** is the instrumentation facade, Spring Boot Actuator exposes the metrics, and Prometheus scrapes them.
+
+## 2. Why it exists
+
+Kubernetes tells you what the container is doing. The JVM tells you what the Java process is doing. You need both views, because "memory high" means something very different depending on whether the pressure is in-heap or off-heap.
+
+## 3. The business problem
+
+A merchant reports intermittent authorisation slowdowns. `kubectl top pod` shows `payment-service` memory rising. The on-call engineer sees only a container-level graph and assumes a Java heap leak. The team prepares for a cache rollback.
+
+But Prometheus shows heap usage flat while daemon threads and direct memory climb. The real cause is a misconfigured HTTP client pool to `merchant-service`, not a heap leak at all. Without JVM metrics, the team would have rolled back the wrong change and learned nothing.
+
+## 4. How it works
+
+Micrometer gives Spring Boot one API for counters, timers, gauges and distribution summaries. The Prometheus registry converts those measurements into the text format Prometheus scrapes at `/actuator/prometheus`.
+
+Typical Spring Boot configuration:
+
+```yaml
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
+```
+
+Dependencies usually include:
+
+```xml
+<dependency>
+  <groupId>org.springframework.boot</groupId>
+  <artifactId>spring-boot-starter-actuator</artifactId>
+</dependency>
+<dependency>
+  <groupId>io.micrometer</groupId>
+  <artifactId>micrometer-registry-prometheus</artifactId>
+</dependency>
+```
+
+Once exposed, Prometheus reaches the endpoint either through annotations or an operator-managed `ServiceMonitor`.
+
+## 5. Internal architecture
+
+| Layer | Role | Example |
+|---|---|---|
+| Application code | Emits business metrics | `payment_authorised_total` |
+| Micrometer | Facade and registry integration | Counter, Timer, Gauge |
+| Spring Boot Actuator | HTTP exposure | `/actuator/prometheus` |
+| Prometheus | Scrapes and stores time series | 15-second scrape |
+| Alertmanager / Grafana | Alerts and visualisation | p99 GC pause alert |
+
+JVM metrics Micrometer exposes out of the box include:
+
+| Metric family | Question it answers |
+|---|---|
+| `jvm_memory_*` | How much heap / non-heap is used? |
+| `jvm_gc_pause_seconds_*` | How often and how long is GC stopping the world? |
+| `jvm_threads_*` | Are thread counts growing abnormally? |
+| `jvm_classes_*` | Is class loading stable or exploding? |
+| `process_cpu_usage` | How busy is the JVM process itself? |
+
+## 6. Component interactions
+
+```
+Spring Boot app
+   -> Micrometer collects JVM + app metrics
+   -> /actuator/prometheus exposes text
+Prometheus
+   -> scrapes the Service / pod
+Grafana / Alertmanager
+   -> queries and alerts
+operator / on-call
+   -> correlates JVM and container metrics
+```
+
+The critical diagnostic pair is:
+
+| Metric | Point of view |
+|---|---|
+| `container_memory_working_set_bytes` | cgroup / container view |
+| `jvm_memory_used_bytes` | JVM view |
+
+If container memory is high but heap usage is moderate, the problem is likely **off-heap**.
+
+## 7. Enterprise example
+
+A large payments platform publishes one standard dashboard per Java service:
+
+| Panel | Why it is there |
+|---|---|
+| Request rate, error rate, latency | Service-level correctness and SLO |
+| Heap used / max | In-heap pressure |
+| GC pause p50 / p95 / p99 | Latency impact of memory pressure |
+| Live threads / daemon threads | Pool leaks and runaway executors |
+| Container memory vs heap used | Off-heap diagnosis |
+| CPU throttling ratio | Whether latency is compute or quota related |
+
+The same dashboard works across `payment-service`, `fraud-service`, `auth-service` and `merchant-service` because the instrumentation contract is standardised.
+
+## 8. Real-world analogy
+
+A building has both an electricity meter for the whole property and circuit-level meters for the server room, kitchen and HVAC. The building meter tells you total consumption; the circuit meters tell you where it is going. Troubleshooting with only the building meter leads to expensive guesses.
+
+**Where it breaks:** a JVM is not cleanly partitioned like electrical circuits. Some native memory use is harder to attribute precisely, which is why you correlate trends rather than expect a perfect one-to-one accounting.
+
+## 9. Best practices
+
+| Practice | Reason |
+|---|---|
+| Expose `/actuator/prometheus` only inside the cluster | Metrics are operationally useful but not public data |
+| Use a shared Micrometer naming convention | Dashboards and alerts become reusable |
+| Scrape both container and JVM metrics | One view alone is incomplete |
+| Add business metrics alongside JVM metrics | "Healthy JVM" is not the same as "payments succeeding" |
+| Keep label cardinality low | Merchant ID and PAN-like identifiers must never become labels |
+| Prefer `ServiceMonitor` where the Prometheus Operator exists | Declarative and consistent |
+| Alert on trends, not single blips | GC and heap vary naturally under load |
+
+## 10. Common mistakes
+
+| Mistake | Symptom |
+|---|---|
+| Exposing Actuator but not Prometheus registry | `/actuator/prometheus` returns 404 |
+| Scraping only container metrics | Heap leak and off-heap leak look identical |
+| High-cardinality labels | Prometheus memory usage explodes |
+| Alerting on raw heap used without `heap_max` | False alarms across differently sized pods |
+| Forgetting non-heap metrics | Thread / metaspace issues go unseen |
+| Exposing metrics through the public Ingress | Unnecessary information leakage |
+
+## 11. Security considerations
+
+| Threat | Control | Residual risk |
+|---|---|---|
+| Sensitive data in metric labels | Strict review; never label by merchant, account or token | A developer can still add a bad label |
+| Metrics endpoint exposed externally | Cluster-only Service, no Ingress, NetworkPolicy | Internal attackers may still reach it |
+| Operational reconnaissance via metrics | Least-privilege access to dashboards and Prometheus | Some metadata remains inherently visible |
+| Prometheus scrape of every pod increases blast radius | Namespace scoping and RBAC | Monitoring remains a privileged component |
+
+## 12. Performance considerations
+
+- Metric collection is not free, but Micrometer's overhead is typically modest when labels are controlled.
+- Histograms and percentiles increase cardinality and storage cost; enable them where they answer a real question.
+- Scrape intervals matter. Fifteen seconds is common; shorter intervals improve fidelity but increase load.
+- For JVM diagnosis, `container_memory_working_set_bytes` is usually more meaningful than RSS because it better approximates actively used memory under cgroups.
+
+Most important JVM alerts for a payments workload:
+
+| Metric | Suggested signal | Why it matters |
+|---|---|---|
+| `jvm_gc_pause_seconds` p99 | Rising or above SLO budget | Direct user latency impact |
+| `jvm_memory_used_bytes{area="heap"} / jvm_memory_max_bytes` | > 0.80 sustained | Heap pressure before OOM |
+| `jvm_threads_daemon_threads` | Sudden increase | Thread leak / pool mis-sizing |
+| `jvm_classes_loaded_classes` | Unusual growth | Proxy / classloader issues |
+| `container_memory_working_set_bytes / limit` | > 0.85 sustained | Container-level kill risk |
+
+## 13. High availability
+
+Metrics do not make a service available, but they make correct fail-safe action possible. Without JVM metrics, teams restart healthy pods and leave broken ones untouched. Observability is what lets autoscaling, right-sizing and rollout safety become engineering rather than guesswork.
+
+## 14. Disaster recovery
+
+During an incident, dashboards preserve the history that pod restarts erase. When a `fraud-service` pod is recreated, its in-process counters reset. Prometheus does not. That historical continuity is why a post-incident review can answer "did memory climb for hours, or spike for seconds?" instead of telling stories from memory.
+
+## 15. Monitoring
+
+Example scrape with annotations:
+
+```yaml
+metadata:
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "8080"
+    prometheus.io/path: "/actuator/prometheus"
+```
+
+Example with a `ServiceMonitor`:
+
+```yaml
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: payment-service
+spec:
+  selector:
+    matchLabels:
+      app: payment-service
+  endpoints:
+    - port: http
+      path: /actuator/prometheus
+      interval: 15s
+```
+
+Correlation patterns worth memorising:
+
+| Pattern | Interpretation |
+|---|---|
+| Container up, heap up with it | Likely in-heap pressure |
+| Container up, heap flat | Off-heap / threads / direct memory / metaspace |
+| Heap flat, GC pause up | Heap near pressure threshold or CPU throttling affecting GC |
+| Heap down after GC, container still high | Native memory remains elevated |
+
+## 16. Troubleshooting
+
+| Symptom | Cause | Command / query | Fix |
+|---|---|---|---|
+| `/actuator/prometheus` 404 | Registry missing or endpoint not exposed | `curl localhost:8080/actuator/prometheus` | Add Micrometer Prometheus registry; expose endpoint |
+| Prometheus target down | Wrong port/path/Service labels | `kubectl describe servicemonitor`; Prometheus targets page | Fix discovery config |
+| High container memory, normal heap | Off-heap usage | Compare `container_memory_working_set_bytes` with `jvm_memory_used_bytes` | Inspect threads, direct memory, pools |
+| Alert flood from one metric | Bad label cardinality | Prometheus TSDB / query inspection | Remove offending labels |
+| JVM looks healthy, payments still failing | Missing business metrics | Query error rate and dependency metrics | Instrument the actual payment path |
+
+## Interview questions
+
+1. **What role does Micrometer play in a Spring Boot application?**
+   *It is the metrics facade. Application and framework code record counters, timers and gauges against Micrometer, and a registry such as Prometheus determines how those metrics are exported.*
+2. **Why do you need both container metrics and JVM metrics?**
+   *Because they answer different questions. Container metrics show cgroup reality — what the kernel may kill. JVM metrics show what the Java process thinks is happening inside heap, GC, threads and class loading.*
+3. **What does `/actuator/prometheus` expose?**
+   *A text representation of application, framework and JVM metrics in Prometheus scrape format, typically served by Spring Boot Actuator with the Prometheus Micrometer registry on the classpath.*
+4. **How do you diagnose off-heap memory pressure?** *(senior)*
+   *Compare `container_memory_working_set_bytes` against `jvm_memory_used_bytes`. If container memory rises while heap remains comparatively flat, the pressure is outside the heap — often direct buffers, threads, metaspace or other native allocations.*
+5. **Why are high-cardinality labels dangerous in a payments platform?** *(senior)*
+   *They explode time-series count, increase Prometheus memory and query cost, and may accidentally embed sensitive business identifiers. Labels must describe dimensions you aggregate by, not individual transactions or merchants.*
+
+---
+
+# 2.9 Health Probes for Spring Boot Actuator
+
+## 1. What it is
+
+Using Spring Boot Actuator's health groups as first-class Kubernetes probe endpoints: `/actuator/health/liveness` for process health and `/actuator/health/readiness` for traffic eligibility.
+
+## 2. Why it exists
+
+The generic `/actuator/health` endpoint is usually too broad for Kubernetes probes. A pod can be alive but temporarily unable to serve because a dependency is down. Kubernetes needs those consequences separated cleanly.
+
+## 3. The business problem
+
+AxisPay had a routine database failover. It lasted forty seconds. That should have caused transient payment errors and a quick recovery.
+
+Instead, every `payment-service` pod restarted.
+
+Why? Both liveness and readiness pointed at the same generic `/actuator/health` endpoint. That endpoint included the database check. When the database slowed, readiness correctly wanted the pod out of rotation — but liveness also failed, so the kubelet restarted the process, dropped caches, severed in-flight work and amplified a dependency blip into a platform incident.
+
+## 4. How it works
+
+Spring Boot 2.3+ has native Kubernetes probe groups. When enabled, Actuator exposes separate endpoints whose semantics match Kubernetes more closely:
+
+```yaml
+management:
+  endpoint:
+    health:
+      probes:
+        enabled: true
+```
+
+Resulting endpoints:
+
+| Endpoint | Intended for | Should check dependencies? |
+|---|---|---|
+| `/actuator/health/liveness` | `livenessProbe` | **No** |
+| `/actuator/health/readiness` | `readinessProbe` | **Yes, critical ones** |
+
+Kubernetes probe example:
+
+```yaml
+livenessProbe:
+  httpGet:
+    path: /actuator/health/liveness
+    port: 8080
+  periodSeconds: 10
+  failureThreshold: 3
+
+readinessProbe:
+  httpGet:
+    path: /actuator/health/readiness
+    port: 8080
+  periodSeconds: 5
+  failureThreshold: 2
+```
+
+## 5. Internal architecture
+
+Actuator aggregates health indicators into groups.
+
+| Group | Typical members | Meaning |
+|---|---|---|
+| Liveness | Internal state only | "Should the process be restarted?" |
+| Readiness | Internal state + critical dependencies | "Should traffic come here right now?" |
+
+A Spring Boot service may include indicators for:
+
+| Indicator | Liveness? | Readiness? |
+|---|---|---|
+| Application state | Yes | Yes |
+| Disk space | Often yes | Often yes |
+| PostgreSQL | No | Yes |
+| Redis used for shared counters | No | Yes |
+| Optional analytics dependency | No | Usually no |
+
+That separation is the design work. The framework can expose the endpoints, but only the team knows which dependencies are critical to the business operation.
+
+## 6. Component interactions
+
+```
+Spring Boot Actuator
+   -> computes liveness / readiness groups
+kubelet
+   -> calls the endpoints locally
+readiness fails
+   -> pod Ready=false -> removed from endpoints
+liveness fails
+   -> container restarted
+startupProbe active
+   -> liveness suppressed until startup succeeds
+```
+
+The probe path is local to the pod. A Service, Ingress or load balancer is not involved.
+
+## 7. Enterprise example
+
+A bank standardises Spring Boot probe behaviour with one internal starter library:
+
+| Standard | Purpose |
+|---|---|
+| Actuator enabled | Common operational surface |
+| Probe groups enabled | Correct Kubernetes semantics |
+| Readiness includes DB, message broker and Redis only when critical | Business-driven dependency classification |
+| Liveness excludes all downstream checks | Prevent cascading restarts |
+
+This means `auth-service`, `merchant-service`, `core-service` and `payment-service` all behave consistently during incidents, which matters more than each team independently rediscovering the same lessons.
+
+## 8. Real-world analogy
+
+A cashier can be alive but not ready to take customers because the till has lost its network connection. You stop sending new customers to that till, but you do not send the cashier home and hire a replacement. Liveness is "is the cashier capable of working at all?" Readiness is "can this till serve the next customer right now?"
+
+**Where it breaks:** a human cashier can explain nuance. A health endpoint reduces that nuance to success or failure, so the dependency classification behind readiness must be thought through carefully.
+
+## 9. Best practices
+
+| Practice | Reason |
+|---|---|
+| Enable probe groups with `management.endpoint.health.probes.enabled=true` | Avoids overloading generic health semantics |
+| Point liveness at `/actuator/health/liveness` | Prevents dependency blips from causing restarts |
+| Point readiness at `/actuator/health/readiness` | Lets traffic drain when critical dependencies fail |
+| Tune readiness to react faster than liveness | Removing from rotation is cheaper than restart |
+| Use `startupProbe` for slow Spring context initialisation | Liveness should not race startup |
+| Include only **critical** dependencies in readiness | Optional systems should degrade, not eject the pod |
+| Test failover drills against probe behaviour | A good config on paper is not enough |
+
+## 10. Common mistakes
+
+| Mistake | Symptom |
+|---|---|
+| Liveness and readiness both use `/actuator/health` | Cascading restarts during DB or Redis blips |
+| Readiness excludes a truly critical dependency | Pod stays ready while payments fail |
+| Liveness includes database checks | Dependency issue becomes platform restart storm |
+| No startup probe on a slow service | CrashLoopBackOff during cold start |
+| Probe groups not enabled | 404 on group endpoints |
+| Readiness too slow | Pod keeps taking traffic after it should drain |
+
+## 11. Security considerations
+
+| Threat | Control | Residual risk |
+|---|---|---|
+| Health endpoints reveal dependency names and status | Show status with minimal detail; avoid public exposure | Internal callers still learn topology |
+| Probe endpoints exposed through Ingress | Keep Actuator internal-only | Misrouted paths can still leak them |
+| Health checks call privileged subsystems | Keep them read-only and cheap | A badly written indicator can still do too much |
+
+## 12. Performance considerations
+
+- Health indicators run often, so they must be lightweight.
+- A readiness check that runs a real SQL query on every pod every 5 seconds can become noticeable load in large fleets.
+- Spring context initialisation for JVM services is not instantaneous. Cold start under class loading, Flyway checks, connection pool warm-up and proxy creation can easily take **45 seconds** or more.
+
+Recommended startup probe for a slow-starting payment path:
+
+```yaml
+startupProbe:
+  httpGet:
+    path: /actuator/health/liveness
+    port: 8080
+  periodSeconds: 5
+  failureThreshold: 12
+  timeoutSeconds: 2
+```
+
+That gives roughly **60 seconds** before liveness is allowed to judge the pod, which is appropriate when the Spring context can take ~45 seconds under load.
+
+## 13. High availability
+
+Correct probe separation is an HA feature. A database outage is bad enough; it should not also erase every warm JVM by restarting them. Readiness preserves healthy process state while withdrawing traffic. That is exactly what you want during dependency instability and exactly what rolling updates depend on.
+
+## 14. Disaster recovery
+
+In a failover event, the fastest path back to service is often "pods stay up, then automatically rejoin when dependencies recover". That only happens when liveness is narrow and readiness is accurate. If both point at the same broad endpoint, disaster recovery becomes slower because the platform is busy recreating pods instead of waiting for the dependency to return.
+
+## 15. Monitoring
+
+| Signal | Threshold | Why it matters |
+|---|---|---|
+| `kube_pod_status_ready{condition="false"}` | Rising during dependency event | Expected if readiness is working |
+| `kube_pod_container_status_restarts_total` | Any rise during dependency event | Usually means liveness is wrong |
+| Probe failure events | Repeated | Shows mis-tuning or genuine outage |
+| Spring Boot health endpoint latency | Rising | Health checks themselves may be too expensive |
+
+## 16. Troubleshooting
+
+| Symptom | Cause | Command | Fix |
+|---|---|---|---|
+| Pod restarts during DB blip | Liveness tied to database | `kubectl get deploy -o yaml`; inspect probe paths | Point liveness to `/actuator/health/liveness` |
+| Pod never becomes ready | Readiness dependency unavailable or misclassified | `curl localhost:8080/actuator/health/readiness` | Fix dependency or health group |
+| Probe endpoint 404 | Probe groups not enabled | `curl localhost:8080/actuator/health/liveness` | Set `management.endpoint.health.probes.enabled=true` |
+| CrashLoop during startup | No or too-short `startupProbe` | `kubectl describe pod` | Increase startup budget |
+| Payments fail but pod stays ready | Readiness too shallow | Compare business errors with readiness state | Include critical dependency in readiness |
+
+## Interview questions
+
+1. **Why should liveness and readiness not point at the same generic `/actuator/health` endpoint?**
+   *Because they have different consequences. Readiness failure should stop traffic; liveness failure restarts the process. If both are tied to the same dependency-rich endpoint, a downstream outage causes unnecessary restarts.*
+2. **What does `management.endpoint.health.probes.enabled=true` do?**
+   *It enables Spring Boot's Kubernetes-oriented health groups so `/actuator/health/liveness` and `/actuator/health/readiness` are exposed with the intended semantics.*
+3. **Should liveness check a database? Why or why not?**
+   *No. A slow or failed database does not mean restarting the JVM will help. It only destroys warm process state and turns a dependency fault into a restart storm.*
+4. **What belongs in readiness that does not belong in liveness?** *(senior)*
+   *Critical downstream dependencies needed to serve the business operation, such as the database or Redis for shared fraud counters. If those are unavailable, the pod should leave rotation but continue running so it can recover quickly.*
+5. **How would you tune probes for a Spring Boot app that takes 45 seconds to start under load?** *(senior)*
+   *Use a startup probe that grants at least 60 seconds of budget, then keep liveness stricter for steady-state failures and readiness faster for traffic draining. The startup probe prevents liveness from judging a pod that is still legitimately initialising.*
+
+---
+
+# 2.10 CPU Throttling Diagnosis for JVM Workloads
+
+## 1. What it is
+
+Understanding when a Java service is not "slow because it is busy" but slow because the Linux scheduler is repeatedly **stopping it from using CPU it momentarily needs**.
+
+## 2. Why it exists
+
+CPU limits are attractive because they look safe and tidy. For JVM workloads they are often the opposite: they punish short, intense bursts from GC, JIT compilation and request spikes even when the average CPU graph looks modest.
+
+## 3. The business problem
+
+`payment-service` had a CPU limit of `500m`. Average usage looked sensible: 220m to 300m. Nobody expected trouble.
+
+Then Black Friday test traffic arrived. p99 latency climbed. GC pauses inflated. Thread pools backed up. Yet dashboards still showed average CPU below the limit most of the time.
+
+The service was not starved on average. It was being **throttled in bursts**, exactly when garbage collection and request fan-out briefly needed more than half a core.
+
+## 4. How it works
+
+Linux CFS quota enforces CPU limits with a quota and period.
+
+| Setting | Meaning |
+|---|---|
+| `cpu.max = 50000 100000` | 50 ms of CPU time per 100 ms period |
+| Effective Kubernetes limit | `500m` |
+
+If the process consumes its 50 ms quota early in the 100 ms window, it is descheduled for the remainder. For a latency-sensitive JVM, that is long enough to matter.
+
+```
+100 ms period
+
+allowed CPU time: 50 ms
+JVM uses 50 ms quickly during GC or JIT
+remaining 50 ms: throttled
+
+average CPU may still look "fine"
+latency does not
+```
+
+## 5. Internal architecture
+
+Why JVMs are especially sensitive:
+
+| JVM activity | Why it bursts CPU |
+|---|---|
+| JIT compilation | Hot code is compiled in bursts by compiler threads |
+| Garbage collection | Stop-the-world phases want CPU quickly |
+| Request fan-out | Serialization, crypto and HTTP client work cluster together |
+| ForkJoin / common pools | Parallel work assumes available processors are real |
+
+Since JDK 10, the JVM is container-aware and tries to detect available CPUs from cgroups. That helps, but it does not remove throttling; it only influences ergonomics such as GC and compiler thread counts.
+
+Useful flags and concepts:
+
+| Setting | Purpose |
+|---|---|
+| `-XX:ActiveProcessorCount=<n>` | Override detected processors when container CPU view is misleading |
+| Container-aware defaults | JDK sizes internal pools based on cgroup CPU view |
+| GC thread counts | Too many threads in a small quota intensify burst pressure |
+
+## 6. Component interactions
+
+```
+Deployment -> CPU request / limit
+kubelet    -> writes cpu.max quota
+JVM        -> detects available processors, sizes internal pools
+GC / JIT   -> burst CPU briefly
+kernel     -> throttles when quota exhausted
+app        -> sees longer pauses and request latency
+```
+
+This is why "CPU under 50%" and "latency terrible" can coexist.
+
+## 7. Enterprise example
+
+Many banks use a policy split:
+
+| Workload type | CPU request | CPU limit |
+|---|---|---|
+| Customer-facing JVM API | Generous request | Often **no CPU limit** |
+| Batch / async worker | Right-sized request | Limit acceptable |
+| Shared node with many tenants | Moderate request | Limit may be necessary to contain neighbours |
+
+The policy is honest about the trade: removing CPU limits improves latency predictability but increases noisy-neighbour risk. There is no free lunch, only a conscious choice.
+
+## 8. Real-world analogy
+
+A cashier is allowed to work only 30 minutes of every hour, but customers arrive unevenly. Even if the day's average workload is light, a lunch rush still becomes a queue because the cashier is forcibly idle exactly when demand peaks.
+
+**Where it breaks:** humans do not work in perfect 100 ms periods. CFS quota does, and that mechanical enforcement is why short bursts can be penalised so harshly.
+
+## 9. Best practices
+
+| Practice | Reason |
+|---|---|
+| Set CPU requests from measured steady-state demand | Requests protect your share under contention |
+| Be cautious with CPU limits on latency-sensitive Java services | Throttling is often worse than modest overuse |
+| Measure throttling directly, not by guesswork | Average CPU hides burst starvation |
+| Review GC and JIT behaviour when tuning limits | JVM internals create the bursts |
+| Consider `-XX:ActiveProcessorCount` in constrained containers | Prevents wildly optimistic internal parallelism |
+| Use load tests that reach p99 latency, not just average throughput | Throttling shows up in tails first |
+| If you keep CPU limits, leave real burst headroom | 500m on a synchronous API is often too tight |
+
+## 10. Common mistakes
+
+| Mistake | Symptom |
+|---|---|
+| Tight CPU limit with low average CPU | "Mystery" latency spikes |
+| Looking only at mean CPU usage | Throttling missed entirely |
+| Assuming more replicas always fix it | New JVMs start cold and may also be throttled |
+| Ignoring GC pause inflation | Memory gets blamed for a CPU problem |
+| Using CPU limits copied from non-JVM services | Same YAML, very different runtime behaviour |
+| Noisy-neighbour fear leads to tiny limits everywhere | Platform looks controlled, user latency suffers |
+
+## 11. Security considerations
+
+| Threat | Control | Residual risk |
+|---|---|---|
+| One service monopolises shared node CPU | CPU requests, node isolation, optional limits | Without limits, abuse can still hurt neighbours |
+| Deliberate CPU flood drives autoscaling cost | HPA caps, edge rate limiting | Attack can still consume reserved share |
+| Overly permissive tuning flags expose internals | Standardise approved JVM options | Incident-time overrides may drift |
+
+## 12. Performance considerations
+
+Signals that matter:
+
+| Signal | Source | Meaning |
+|---|---|---|
+| `container_cpu_cfs_throttled_periods_total` | Prometheus / cAdvisor | Count of periods where throttling happened |
+| `container_cpu_cfs_throttled_seconds_total` or `throttled_usec` | Prometheus / `cpu.stat` | How much time was lost to throttling |
+| `jvm_gc_pause_seconds` | JVM metrics | Pause inflation often follows throttling |
+| `process_cpu_usage` | JVM view | Useful, but average-only by itself is insufficient |
+
+Inside the container:
+
+```bash
+kubectl exec -n axispay-core payment-service-6c7c7dbdb7-6m9r5 -- cat /sys/fs/cgroup/cpu.stat
+```
+
+Example output:
+
+```text
+usage_usec 184930221
+nr_periods 125640
+nr_throttled 14982
+throttled_usec 38700491
+```
+
+That tells you throttling is not hypothetical.
+
+## 13. High availability
+
+CPU throttling is an availability issue when it pushes latency beyond upstream timeouts. A service can remain `Ready`, pass every liveness check, never restart and still effectively disappear from the user path because callers give up. Silent latency failures are among the hardest availability failures to see.
+
+## 14. Disaster recovery
+
+During an incident, removing or raising a CPU limit is a legitimate break-glass action for a latency-sensitive JVM service. But it changes the cluster risk posture. The follow-up action is mandatory: if the service needed more CPU to survive, requests, quotas and node sizing must be revisited before the next peak.
+
+## 15. Monitoring
+
+| Metric | Threshold |
+|---|---|
+| `container_cpu_cfs_throttled_periods_total / container_cpu_cfs_periods_total` | > 5% sustained |
+| `container_cpu_usage_seconds_total` | Correlate with throttling, not alone |
+| `jvm_gc_pause_seconds` p99 | Sudden increase |
+| API latency p99 | Rising with throttling |
+| HPA at max replicas plus throttling | Severe capacity / sizing problem |
+
+## 16. Troubleshooting
+
+Worked example: `payment-service` limit `500m`, average CPU modest, latency terrible.
+
+| Observation | Meaning |
+|---|---|
+| Average CPU ~300m | Service is not continuously saturated |
+| `nr_throttled` climbing fast | Short bursts are hitting the limit |
+| GC pause p99 rising | GC cannot finish quickly when it needs CPU |
+| More pods help only slowly | New JVMs take time to warm up |
+
+Diagnosis commands:
+
+```bash
+kubectl top pod -n axispay-core --containers | grep payment-service
+kubectl exec -n axispay-core <pod> -- cat /sys/fs/cgroup/cpu.stat
+kubectl describe hpa payment-service -n axispay-core
+```
+
+Possible fixes, in order of preference:
+
+| Fix | Benefit | Trade-off |
+|---|---|---|
+| Raise CPU request | Better guaranteed share under contention | Consumes schedulable capacity |
+| Raise CPU limit | Reduces throttling | Still imposes a ceiling |
+| Remove CPU limit | Best latency behaviour | More noisy-neighbour risk |
+| Tune `ActiveProcessorCount` / thread pools | Smoother internal burstiness | More tuning complexity |
+
+The honest recommendation for latency-sensitive JVM services is often: **set memory limits, measure CPU carefully, and consider omitting CPU limits** unless your multi-tenant risk model demands them.
+
+## Interview questions
+
+1. **How are CPU limits enforced in Linux containers?**
+   *With CFS quota and period, exposed in cgroups as values such as `cpu.max`. A container gets a fixed amount of CPU time per period; once consumed, it is throttled until the next period.*
+2. **Why are JVM workloads particularly prone to CPU throttling pain?**
+   *Because GC, JIT compilation and request processing are bursty. They need short intervals of high CPU, and throttling those bursts inflates pause times and tail latency even when average CPU looks low.*
+3. **What metrics or files prove throttling is happening?**
+   *Prometheus metrics such as `container_cpu_cfs_throttled_periods_total` and cgroup data like `/sys/fs/cgroup/cpu.stat`, especially `nr_throttled` and `throttled_usec`.*
+4. **Why can GC pause times rise while average CPU stays modest?** *(senior)*
+   *Because GC needs burst CPU to finish quickly. If a 500m limit repeatedly stops it mid-burst, pause time stretches even though the long-term average CPU still appears acceptable.*
+5. **When is removing a CPU limit the right decision?** *(senior)*
+   *When latency predictability for a critical synchronous JVM service matters more than strict per-container CPU containment, and the platform has other controls such as generous requests, quotas, node isolation or trusted tenancy. It is a trade, not a default for every workload.*
+
+---
+
+# 2.11 Autoscaling Java Workloads: HPA Behaviour and Pitfalls
+
+Java services interact awkwardly with the HPA because new capacity is not instantly useful. A Spring Boot pod may schedule in seconds and still take **30 to 90 seconds** before it contributes meaningful work: the JVM starts, classes load, connection pools warm, JIT compilation begins, caches are cold and readiness waits for dependencies. During that window, the HPA thinks it has added capacity, but the business path does not feel it yet.
+
+That gap explains why default HPA behaviour often disappoints teams running `payment-service` or `fraud-service`. CPU rises, the HPA scales up, new pods appear, and latency still worsens for another minute. The loop is not "broken"; it is simply slower than the traffic event.
+
+There is a second trap on the way back down. Default or aggressive scale-down can remove pods shortly after the spike passes, before the fleet has actually stabilised. For JVM workloads this is especially wasteful: the platform kills the very pods it just spent time warming up. If traffic oscillates, the service thrashes between cold scale-up and impatient scale-down.
+
+The `behavior` field exists to shape that loop:
+
+```yaml
+behavior:
+  scaleUp:
+    stabilizationWindowSeconds: 0
+  scaleDown:
+    stabilizationWindowSeconds: 300
+```
+
+For Java workloads, teams often go further and make the scaling loop intentionally less twitchy:
+
+```yaml
+behavior:
+  scaleUp:
+    stabilizationWindowSeconds: 15
+  scaleDown:
+    stabilizationWindowSeconds: 600
+```
+
+That does two things. A short scale-up stabilisation window dampens single noisy samples without materially slowing response. A much longer scale-down window keeps warmed pods around long enough to absorb a second wave without paying another cold-start tax.
+
+The metric choice matters even more than the timing. CPU is attractive because it is built in, but CPU is an imperfect proxy for payment demand. A flash-sale spike may produce queueing, request concurrency and downstream contention before mean CPU tells the full story. For `payment-service`, a custom metric such as in-flight requests (`http_server_requests_active`) or queue depth can be a better early signal than raw CPU, because it measures backlog or concurrency directly.
+
+Worked example: an AxisPay merchant runs a Black Friday campaign at 09:00. `payment-service` starts with `minReplicas: 3`, `maxReplicas: 12`, CPU target 70%. Traffic jumps from 40 rps to 140 rps in under a minute.
+
+What happens with a CPU-only HPA:
+
+1. Existing pods saturate and CPU climbs.
+2. HPA notices on the next metrics cycle and raises desired replicas.
+3. New pods schedule quickly, but each needs ~60 seconds to become truly useful.
+4. During that minute, the original pods remain overloaded and latency continues to climb.
+5. By the time new pods help, the queue is already established.
+
+To the business, "the HPA scaled" and "the service still struggled" feel contradictory. They are not. The autoscaler reacted correctly to the metric it had, but the new JVM capacity arrived too late to prevent the queue.
+
+AxisPay's fix had two parts.
+
+First, they increased `minReplicas` ahead of the event. Pre-warming is often the simplest and most effective solution for scheduled traffic. If the business already knows 09:00 will be exceptional, the platform should not wait for CPU graphs to discover it. Extra warm replicas cost money for a short window, but failed payments cost reputation immediately.
+
+Second, they added a custom metric better aligned to user pain. Instead of waiting only for CPU, the HPA considered request concurrency. When `http_server_requests_active` rose sharply, scaling began earlier — before CPU averaged high enough to trigger the same response. CPU remained a useful secondary signal, but not the only one.
+
+Example direction:
+
+```yaml
+metrics:
+  - type: Pods
+    pods:
+      metric:
+        name: http_server_requests_active
+      target:
+        type: AverageValue
+        averageValue: "30"
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+```
+
+This is not "custom metrics are always better". It is "scale on the bottleneck you actually hit". For a synchronous payment API, concurrency or queue depth often predicts pain earlier than mean CPU. For a CPU-bound signer or fraud scorer, CPU may still be the right primary metric.
+
+Scale-down deserves equal care. If new pods take 60 seconds to become productive, killing them 90 seconds after the spike passes is perverse. A longer `behavior.scaleDown.stabilizationWindowSeconds` — often 300 to 600 seconds for JVM services — keeps warmed capacity around long enough to ride out normal traffic aftershocks. The cost increase is deliberate and usually minor compared with the instability avoided.
+
+Practical rules for Java HPAs:
+
+| Rule | Why |
+|---|---|
+| Keep `minReplicas` high enough for normal burst absorption | HPA is not instantaneous |
+| Use `startupProbe` and readiness correctly | Unready pods are not useful capacity |
+| Lengthen scale-down stabilisation | Protect warm pods from churn |
+| Pre-warm ahead of known events | Scheduled business spikes are predictable |
+| Consider custom metrics such as queue depth or active requests | They expose pressure sooner than CPU in many APIs |
+
+One final pitfall: an HPA can scale up perfectly and still fail operationally if the namespace quota, node capacity or downstream dependency cannot support the extra replicas. For Java workloads this hurts twice: you either get no new pods, or you get cold new pods that still cannot serve because the database or `merchant-service` is saturated. Autoscaling is not magic capacity creation. It is replica management within the limits of the rest of the system.
+
+The sober conclusion is this: HPA works well for JVM services **when it is treated as part of a broader capacity design**. Warm baseline replicas, correct probes, realistic startup expectations, patient scale-down and the right metric together make autoscaling useful. Leaving the defaults untouched and hoping CPU alone will rescue a payment spike is how teams discover that "scaled up" and "handled the surge" are not the same sentence.
+
+---
+
 # Day 2 cheat sheet
 
 ## Resources

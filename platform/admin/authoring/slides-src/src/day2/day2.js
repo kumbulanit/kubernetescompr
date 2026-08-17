@@ -45,7 +45,7 @@ L.sAsk(p, {
 
 L.sTable(p, {
   chip: "TODAY", title: "What is missing, and what breaks because of it",
-  lead: "Every gap below is one you could already feel yesterday.",
+  lead: "Kubernetes only behaves predictably when key runtime rules are declared explicitly. Each missing control below leaves the platform guessing about placement, health, scale or shutdown — and yesterday's incident was exactly that kind of ambiguity.",
   head: ["Missing right now", "What it costs you", "Fixed in"],
   colW: [3.9, 5.9, 2.3],
   rows: [
@@ -92,15 +92,26 @@ L.sBanner(p, {
 
 L.sCards(p, {
   chip: "M2.2 · RESOURCES", title: "Two numbers, two completely different jobs",
+  lead: "In Kubernetes, requests and limits are separate resource declarations read by different subsystems. A request is a scheduler reservation used before a pod exists; a limit is a kernel-enforced ceiling applied after placement, so the same numbers answer two different operational questions.",
   cards: [
-    { badge: "R", colour: C.teal, title: "requests", body: "What the SCHEDULER reserves.\n\nA node with 2000m allocatable and 1400m already reserved has room for a 300m request — even if nothing is actually using CPU right now.\n\nThis is a booking, not a measurement." },
-    { badge: "L", colour: C.amberD, title: "limits", body: "What the KERNEL enforces, per container, at runtime.\n\nExceed a CPU limit and you are throttled. Exceed a memory limit and you are killed.\n\nThis is a ceiling, not a reservation." },
+    { badge: "R", colour: C.teal, title: "requests", body: "A request is the amount of CPU or memory Kubernetes books on a node before a container starts. If a node has 2000m allocatable and 1400m already requested, a generic web-app asking for 300m fits and one asking for 700m does not, even if the node is nearly idle.\n\nThis is a reservation the scheduler uses for placement and bin-packing; it is not live usage." },
+    { badge: "L", colour: C.amberD, title: "limits", body: "A limit is the runtime ceiling Linux enforces on the container's cgroup after placement. In AxisPay, a too-low CPU limit on payment-service silently burns the 83 ms latency headroom, while a too-low memory limit on fraud-service ends in OOMKilled and restart.\n\nLimits protect neighbours, but badly sized limits create the exact symptoms we debug today." },
   ],
   obj: "Separate scheduling from enforcement — the distinction most people never make.",
   time: "8 min",
   script: "The confusion to kill: people think requests and limits are 'minimum and maximum of the same thing'. They are not. They are inputs to two different systems that never talk to each other.\n\nThe scheduler only ever reads requests. The kernel only ever reads limits. A pod can be scheduled onto a busy node because its request is small, and then throttled because its limit is small. Those are unrelated events with unrelated causes.",
   ask: "A node has 2000m allocatable, 1900m already requested, and is 5% busy. Will a pod requesting 200m schedule there?",
   answer: "No. The scheduler works from reservations, not from actual usage. There is 100m unreserved. This surprises people the first time — an idle node that refuses work.",
+});
+
+D2.dReqLimit(p, {
+  chip: "M2.2 · RESOURCES", title: "Requests book node space; limits cap runtime",
+  obj: "Turn the requests-versus-limits distinction into a visual model.",
+  time: "6 min",
+  script: "Read left to right. The left panel is the scheduler's world: only requests exist there, so an idle node can still reject a pod because its booked capacity is full.\n\nThe right panel is the kernel's world: the pod already exists, and the question is no longer 'can it fit?' but 'how far may it run before the cgroup stops it?' That split explains most resource bugs.\n\nKeep the labels generic on purpose — this is the universal mechanism behind the AxisPay examples around it.",
+  anim: "Reveal the left panel, then the pod spec, then the runtime panel.",
+  ask: "If you double only the limit and leave the request untouched, which side of this diagram changes?",
+  answer: "Only the runtime side. Scheduling is unchanged because the request — the booked amount — did not move. The pod may burst further once placed, but it does not become easier to schedule.",
 });
 
 L.sStats(p, {
@@ -120,12 +131,13 @@ L.sStats(p, {
 L.sExplain(p, {
   chip: "M2.2 · RESOURCES",
   title: "How the kernel actually enforces a CPU limit",
+  lead: "A CPU limit is not an advisory setting inside Kubernetes. The kubelet translates it into a Linux cgroup quota, and the kernel enforces that quota in short repeating periods, so a container can look healthy overall while repeatedly being stopped for slices of time.",
   question: "You set limits.cpu: 500m. What does the kernel do with that number?",
   steps: [
-    ["Translate to a quota", "The kubelet writes cpu.max in the container's cgroup: \"50000 100000\". That reads as 50,000 microseconds of CPU per 100,000-microsecond period. 500m = half a core = 50ms every 100ms.", C.teal],
-    ["Meter each period", "Every 100 ms the kernel resets the budget. Your threads run until they have consumed 50 ms of CPU time across all cores.", C.teal],
-    ["Freeze on exhaustion", "Burn the budget in 20 ms and your process is DESCHEDULED for the remaining 80 ms. Not slowed — stopped. It resumes at the next period boundary.", C.red],
-    ["Count it, silently", "nr_throttled and throttled_usec increment in cpu.stat. Nothing is logged, no event is emitted, the pod is not restarted, and no Kubernetes API surface reports it.", C.red],
+    ["Translate to a quota", "For any CPU-limited container, kubelet writes a CFS quota into the cgroup's cpu.max file. Here it becomes \"50000 100000\": 50,000 microseconds of CPU every 100,000-microsecond period, so 500m means half a core.", C.teal],
+    ["Meter each period", "Linux enforces that budget one period at a time. Every 100 ms the counter resets, and the container's threads may run until they have consumed their 50 ms of CPU across the node's cores.", C.teal],
+    ["Stall the payment path", "On AxisPay, payment-service can burn that 50 ms budget early while fanning out to auth-service, fraud-service and the acquirer. The pod then waits for the rest of the 100 ms window while checkout requests simply queue behind it.", C.red],
+    ["Find the proof", "The pod stays Running and the application logs stay clean, so the evidence is inside the container: cpu.stat shows nr_throttled and throttled_usec climbing. That is how the 'nothing is broken, but p99 is awful' incident is actually diagnosed.", C.red],
   ],
   kicker: "This is why a throttled service shows modest AVERAGE CPU and terrible p99 — the stalls are concentrated, not spread.",
   obj: "Explain the mechanism behind the invisible latency failure.",
@@ -137,7 +149,7 @@ L.sExplain(p, {
 
 L.sTable(p, {
   chip: "M2.2 · RESOURCES", title: "QoS class — who gets evicted first",
-  lead: "You do not set QoS. Kubernetes derives it from what you did or did not declare.",
+  lead: "QoS is a derived eviction priority, not a field you type into YAML. Kubernetes assigns it from each container's requests and limits, then uses that class when a node runs short of memory or other critical resources.",
   head: ["Class", "Condition", "Evicted under node pressure", "AxisPay uses"],
   colW: [2.3, 5.2, 2.6, 2.0],
   rows: [
@@ -165,6 +177,34 @@ L.sLab(p, {
   time: "45 minutes", file: "labs/day2/L2.1-resources/",
   obj: "Produce both failure modes deliberately.",
   script: "Insist they write down their own numbers BEFORE looking at the manifest. Guessing and then checking is how the intuition forms.\n\nSteps 5 and 6 are the payoff: same category of mistake, completely different symptom. They need that contrast this afternoon.",
+});
+
+L.sExplain(p, {
+  chip: "M2.2 · GOVERNANCE",
+  title: "What a namespace does — and does not — isolate",
+  lead: "A namespace is a logical partition inside one Kubernetes cluster that scopes object names and can carry its own RBAC, quotas and defaults. It lets multiple teams or environments share a control plane without making every Service, Secret or Role globally unique.",
+  question: "If two teams both create a Service named api, what keeps them separate?",
+  steps: [
+    ["Scope the names", "Object identity is namespace-qualified, so team-a/api and team-b/api are different Services with different DNS names, labels and policies. That is why the same simple names can be reused safely across a shared cluster.", C.teal],
+    ["Attach local policy", "ResourceQuota, LimitRange and RBAC are evaluated per namespace. A generic web-app namespace can have its own CPU budget, default requests and read permissions without changing what another namespace is allowed to do.", C.teal],
+    ["Apply it to AxisPay", "AxisPay keeps payment-service, auth-service and edge-gateway in axispay-core, while async work such as recon-worker lives outside that namespace. A batch retry must not consume the same budget or secret visibility as the live payment path.", C.amberD],
+    ["Know the boundary", "Namespaces do not magically isolate network traffic. If axispay-core must be unable to talk to another namespace, that requires NetworkPolicy; namespace alone only scopes names, access and budgets.", C.red],
+  ],
+  kicker: "Namespaces are an administrative wall, not a packet filter. Treat quota and NetworkPolicy as separate controls.",
+  obj: "Add the missing namespace-isolation theory before the governance lab.",
+  time: "7 min",
+  script: "The common mistake is to over-credit namespaces. They absolutely matter, but for names, RBAC and resource governance first.\n\nUse the generic example in steps 1 and 2, then pivot to axispay-core versus async work. That is the real operational reason for the split: noisy batch work and live payment traffic do not get to share one unbounded namespace budget.",
+  ask: "Can two namespaces both contain a Service called web, and does that stop them reaching each other?",
+  answer: "Yes, and no. The names do not collide because identity is namespace-qualified, but nothing about that alone blocks traffic. Reachability is controlled separately by the cluster network and any NetworkPolicy you apply.",
+});
+
+D2.dNamespace(p, {
+  chip: "M2.2 · GOVERNANCE", title: "Namespace scoping inside one cluster",
+  obj: "Visualise namespace-qualified names and per-namespace governance.",
+  time: "5 min",
+  script: "The duplicated names are the point: both namespaces have a Service called web and a database pod called db-0, and Kubernetes is perfectly happy because the namespace qualifies identity.\n\nThen land the second sentence at the bottom. Students often hear 'isolation' and assume a network wall. This diagram corrects that without turning into a NetworkPolicy module.",
+  ask: "What can be different between these two namespaces even if the object names are identical?",
+  answer: "Their RBAC, quotas, LimitRanges, labels, secrets and policies. Name reuse is only the visible part; the real value is that each namespace can carry a different operational contract.",
 });
 
 L.sLab(p, {
@@ -241,12 +281,12 @@ L.sCode(p, {
 L.sMistakes(p, {
   chip: "COMMON MISTAKES", title: "Probe mistakes and what they look like",
   rows: [
-    ["Liveness checks a dependency", "ALL replicas restart together on a blip", "Liveness -> /healthz. Process only."],
-    ["No readiness probe", "Rollout 'succeeds' while dropping traffic", "Readiness -> /readyz, checks dependencies"],
-    ["No startup probe on a slow starter", "CrashLoopBackOff on a cold cache", "startupProbe with a generous budget"],
-    ["Liveness too aggressive", "Restarts under load, never recovers", "period x threshold > worst-case response"],
-    ["Readiness successThreshold > 1", "Pod never becomes ready", "Readiness successThreshold must be 1"],
-    ["Probe endpoint healthier than reality", "Probes pass, payments fail", "Make /readyz reflect what serving needs"],
+    ["Generic web-api liveness checks its database", "ALL replicas restart together on a dependency blip", "Liveness -> /healthz. Process only."],
+    ["Generic rollout has no readiness probe", "Deploy 'succeeds' while cold pods still receive traffic", "Readiness -> /readyz, checks dependencies"],
+    ["payment-service liveness checks merchant-service", "Merchant outage restarts every payment pod", "Dependency truth belongs in readiness, not liveness"],
+    ["auth-service cold start has no startupProbe", "CrashLoopBackOff during key load or cache warm-up", "startupProbe with a real startup budget"],
+    ["edge-gateway readiness successThreshold > 1", "The pod stays unready far longer than intended", "Readiness successThreshold must stay 1"],
+    ["payment-service /readyz only checks HTTP listener", "Probes pass, but authorisations still fail downstream", "Make /readyz reflect REAL serving dependencies"],
   ],
   obj: "Pre-empt the six probe errors students are about to make.",
   time: "6 min",
@@ -293,13 +333,14 @@ D2.dHPA(p, {
 L.sExplain(p, {
   chip: "M2.4 · SCALING",
   title: "One HPA cycle, worked end to end",
-  question: "fraud-service: 2 pods, request 150m, target 65%. Load arrives. Walk one 15-second cycle.",
+  lead: "The HorizontalPodAutoscaler is a feedback controller that periodically compares observed metrics with a target and rewrites a workload's desired replica count. For CPU scaling, the utilisation calculation is always relative to each ready pod's CPU request, so request sizing directly changes the answer.",
+  question: "Generic web-api: 2 pods, request 200m, target 70%. Load arrives. Walk one 15-second cycle.",
   steps: [
-    ["Read usage", "metrics-server reports pod A at 198m and pod B at 186m. These come from each kubelet's cAdvisor, scraped every 15 seconds — so the data is up to 30 seconds stale.", C.teal],
-    ["Compute utilisation", "198/150 = 132%. 186/150 = 124%. Average across READY pods = 128%. The denominator is the REQUEST (150m), not the limit (600m) and not the node.", C.amberD],
-    ["Apply the formula", "desired = ceil(2 x 128 / 65) = ceil(3.94) = 4 replicas.", C.green],
-    ["Clamp by policy", "scaleUp allows +2 pods per 30s and at most 100%. Both permit 4. minReplicas 2, maxReplicas 6 — 4 is inside. So the HPA writes spec.replicas: 4.", C.green],
-    ["Hand off", "The Deployment controller sees 4 desired and 2 actual, and creates two more Pods. The HPA itself never touches a Pod.", C.teal],
+    ["Read usage", "The HPA reads CPU metrics gathered from kubelets via metrics-server. In a generic example, pod A reports 260m and pod B 220m; because the pipeline scrapes periodically, the numbers are near-real-time but can already be 15-30 seconds old.", C.teal],
+    ["Compute utilisation", "CPU utilisation is usage divided by request for each READY pod. So 260/200 = 130% and 220/200 = 110%; the average is 120%. The denominator is the REQUEST, not the limit and not node capacity.", C.amberD],
+    ["Apply it to AxisPay", "fraud-service uses the same arithmetic. With 2 pods at 198m and 186m on a 150m request, average utilisation is 128%, so the controller computes ceil(2 x 128 / 65) = 4 replicas.", C.green],
+    ["Clamp by policy", "AxisPay still bounds that raw answer by policy. scaleUp allows +2 pods per 30s and at most 100%; minReplicas is 2 and maxReplicas is 6. Four fits, so the HPA writes spec.replicas: 4.", C.green],
+    ["Hand off", "The HPA updates desired state and stops there. The Deployment controller notices 4 desired versus 2 actual and creates the extra fraud-service pods; the HPA never creates pods directly.", C.teal],
   ],
   kicker: "Change the request to 600m and utilisation becomes 32% — the HPA scales DOWN. Same load, opposite decision.",
   obj: "Make the HPA arithmetic concrete and show how the request changes the answer.",
@@ -311,7 +352,7 @@ L.sExplain(p, {
 
 L.sTable(p, {
   chip: "M2.4 · SCALING", title: "Scale up fast. Scale down slowly.",
-  lead: "The asymmetry is deliberate, and it prevents a specific failure.",
+  lead: "Autoscaling is intentionally asymmetric because adding capacity and removing capacity carry different risks. Kubernetes usually scales up quickly to absorb demand, but scales down cautiously so short-lived dips do not create oscillation.",
   head: ["", "Scale UP", "Scale DOWN"],
   colW: [3.0, 4.55, 4.55],
   rows: [
@@ -403,15 +444,25 @@ D2.dWorkloads(p, {
 
 L.sCards(p, {
   chip: "M2.5 · WORKLOADS", title: "Job and CronJob: the fields that matter",
+  lead: "Jobs and CronJobs manage finite work rather than continuously serving traffic. Their key fields answer three control questions: when should work start, how long may it run, and what should Kubernetes do if an attempt fails, runs late or collides with another run?",
   cards: [
-    { badge: "J", colour: C.amberD, title: "Job", body: "backoffLimit: 4 — how many times to retry the POD before failing the Job. Exponential back-off between attempts.\n\nactiveDeadlineSeconds — a hard wall clock ceiling. Without it, a hung job runs until morning.\n\nrestartPolicy MUST be Never or OnFailure. Always is rejected." },
-    { badge: "C", colour: C.purple, title: "CronJob", body: "timeZone — NOT optional. The cluster runs UTC; the merchant's end-of-day does not. A batch on the wrong calendar day is an accounting defect.\n\nconcurrencyPolicy: Forbid — settlement must never double-run.\n\nstartingDeadlineSeconds — run late, but not absurdly late." },
+    { badge: "J", colour: C.amberD, title: "Job", body: "A Job tracks completion, so failure policy matters more than steady-state uptime. backoffLimit: 4 means retry the pod four times before the Job is marked failed, with exponential back-off between attempts.\n\nactiveDeadlineSeconds is a wall-clock cutoff, and restartPolicy must be Never or OnFailure because Always would never let the Job finish." },
+    { badge: "C", colour: C.purple, title: "CronJob", body: "A CronJob adds a schedule, overlap policy and missed-run handling on top of a Job. A generic nightly report uses concurrencyPolicy: Forbid so one slow run does not spawn a second copy on top of it.\n\nIn AxisPay, timeZone makes settlement align with the merchant's business day, and startingDeadlineSeconds allows a late start without replaying stale money movement." },
   ],
   obj: "Cover the fields that cause real incidents.",
   time: "8 min",
   script: "restartPolicy: Always is REJECTED for a Job — worth saying why. With Always the container would restart on success and the Job could never complete. The API refuses it rather than letting you build something that can never finish.\n\nconcurrencyPolicy for settlement: Allow would double-count. Replace would kill a run mid-way and leave partial work. Forbid is the only defensible value for money movement, and students should be able to argue that.",
   ask: "Your settlement CronJob is set to 0 23 * * * with no timeZone, on a cluster in UTC, for merchants in Johannesburg. When does it actually run, and what does it settle?",
   answer: "01:00 the NEXT day, local time. So the 'Tuesday' batch runs on Wednesday morning and may pick up Wednesday's early transactions. That is a genuine accounting defect and it is entirely silent.",
+});
+
+D2.dCronJob(p, {
+  chip: "M2.5 · WORKLOADS", title: "CronJob creates Jobs; Jobs own Pods",
+  obj: "Make the controller chain and overlap policy visual.",
+  time: "6 min",
+  script: "Point at the lanes. The CronJob's job is to notice the schedule and create a Job object. The Job's job is then to create pods, retry failures and declare completion. Students often compress those into one thing; this slide separates them.\n\nThen land the Forbid branch on the right. That single policy choice is what stops a slow batch from double-running itself at the next schedule boundary.",
+  ask: "If the CronJob fires again while the previous Job is still running and concurrencyPolicy is Forbid, what new pod appears?",
+  answer: "None. The second schedule hit is noticed, but the controller skips creating a new Job. That is exactly what you want for non-idempotent business work such as settlement or payout files.",
 });
 
 L.sLab(p, {
@@ -477,15 +528,15 @@ L.sCode(p, {
 
 L.sTable(p, {
   chip: "M2.6 · GRACEFUL SHUTDOWN", title: "SIGTERM, grace period, SIGKILL — and why the order matters",
-  lead: "Two things happen in parallel when a pod is deleted. Getting them in the wrong order severs live payments.",
+  lead: "Pod termination in Kubernetes is a coordinated shutdown sequence, not an instant stop. Traffic removal and process termination happen in parallel, so applications need time to leave load balancers, stop accepting new work and finish in-flight requests before the kernel finally forces them down.",
   head: ["#", "What happens", "Why it matters"],
   colW: [0.7, 5.6, 5.8],
   rows: [
-    ["1", "Pod marked Terminating; endpoint controller removes it from the EndpointSlice", "Traffic should stop arriving — but this must PROPAGATE to every node"],
-    ["2", "preStop hook runs: sleep 8", "The pause that lets step 1 reach every node's kube-proxy"],
-    ["3", "SIGTERM sent to PID 1", "App marks itself unready and finishes in-flight authorisations"],
-    ["4", "Up to terminationGracePeriodSeconds (45s) to exit", "Must exceed the LONGEST in-flight operation, not the average"],
-    ["5", "SIGKILL if still alive", "Cannot be caught. Anything still running is severed."],
+    ["1", "Pod marked Terminating; endpoint controller removes it from the EndpointSlice", "New traffic should stop — but that removal must propagate to every node"],
+    ["2", "preStop hook runs: sleep 8", "This delay gives step 1 time to reach kube-proxy everywhere"],
+    ["3", "SIGTERM sent to PID 1", "App should stop new work and finish in-flight requests; in AxisPay, live authorisations"],
+    ["4", "Up to terminationGracePeriodSeconds (45s) to exit", "Set it longer than the LONGEST authorisation or callback, not the average"],
+    ["5", "SIGKILL if still alive", "This cannot be caught. Any work still running is severed."],
   ],
   rowH: 0.66,
   obj: "Explain the termination sequence and the reason preStop exists.",
@@ -589,7 +640,7 @@ L.sStats(p, {
 
 L.sTable(p, {
   chip: "TOMORROW", title: "Day 3 — give it a memory",
-  lead: "Everything you processed today vanishes on restart.",
+  lead: "Stateless scaling is only half the platform story. Any workload that must retain transactions, configuration, secrets or state across restarts needs persistent storage and externalised data, otherwise correct Kubernetes behaviour still loses business context.",
   head: ["What is missing", "What it costs", "Fixed in"],
   colW: [4.2, 5.6, 2.3],
   rows: [
