@@ -172,6 +172,7 @@ spec:
         # Postgres that was merely still starting.
         - name: wait-for-postgres
           image: postgres:17-alpine
+          imagePullPolicy: IfNotPresent
           command:
             - sh
             - -c
@@ -194,6 +195,7 @@ spec:
       containers:
         - name: migrate
           image: postgres:17-alpine
+          imagePullPolicy: IfNotPresent
           command:
             - sh
             - -c
