@@ -4,6 +4,19 @@ This lab is about packaging Kubernetes resources so they can be installed more e
 
 In simple words: Helm lets you package many YAML files into one release.
 
+### What this concept means
+Helm packages Kubernetes resources into a reusable release. Instead of managing many YAML files by hand, you describe the resources in templates and values files, then let Helm turn them into real resources for the cluster.
+
+This makes installation and upgrades more repeatable. It also makes it easier to keep the same application definition while swapping values for different environments.
+
+```mermaid
+flowchart LR
+  Chart[Helm Chart] --> Template[Templates]
+  Template --> Cluster[Kubernetes Cluster]
+  Chart --> Values[Values]
+```
+
+
 Do this first:
 What you should expect to see: you understand the goal of the lab and the files involved.
 
@@ -22,6 +35,10 @@ What you should expect to see: the command runs without errors and the result ma
 ```bash
 helm install <release-name> .
 ```
+
+Expected result:
+- Helm reports a successful install or upgrade.
+- The release should appear in `helm list`.
 This turns the chart templates into real Kubernetes resources.
 
 Then do this:
@@ -31,6 +48,10 @@ What you should expect to see: the command runs without errors and the result ma
 helm list
 kubectl get all -n <namespace>
 ```
+
+Expected result:
+- The output lists the resource names or details you expected to inspect.
+- You should be able to see the object or the status you are checking.
 This shows that the release was created and the resources exist.
 
 Then do this:
@@ -47,3 +68,7 @@ What you should expect to see: the validation command finishes successfully.
 ```bash
 make validate-lab LAB=L5.3
 ```
+
+Expected result:
+- The validation command finishes successfully.
+- You should see a passing message for the lab.

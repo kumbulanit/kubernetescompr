@@ -4,6 +4,18 @@ This lab is about moving passwords and keys out of the deployment and into a Sec
 
 In simple words: do not put important secrets directly into your YAML if you can avoid it.
 
+### What this concept means
+A Secret is a Kubernetes object for sensitive values such as passwords, tokens, and private keys. It is meant to keep these values separate from regular configuration so they are easier to control and less likely to be exposed in ordinary deployment files.
+
+The key idea is that a Secret is not a magic shield. It is an object that can be referenced by workloads and protected by access rules. In many teams, the real protection comes from limiting who can read it and from making sure the value is not printed in logs or environment variables unnecessarily.
+
+```mermaid
+flowchart LR
+  App[Application] --> Secret[Secret]
+  Secret --> App
+```
+
+
 Do this first:
 What you should expect to see: you understand the goal of the lab and the files involved.
 
@@ -22,6 +34,11 @@ What you should expect to see: the command runs without errors and the result ma
 ```bash
 kubectl apply -f manifests/
 ```
+
+Expected result:
+- The command finishes without errors.
+- You should see messages such as `created` or `configured` for the resources.
+- A follow-up `kubectl get` command should show the objects you created.
 This creates the Secrets in the cluster.
 
 Then do this:
@@ -31,6 +48,10 @@ What you should expect to see: the command runs without errors and the result ma
 kubectl get secret -n axispay-data
 kubectl get secret -n axispay-edge
 ```
+
+Expected result:
+- The output lists the resource names or details you expected to inspect.
+- You should be able to see the object or the status you are checking.
 This shows that the Secrets now exist.
 
 Then do this:
@@ -39,6 +60,10 @@ What you should expect to see: the command runs without errors and the result ma
 ```bash
 kubectl get secret axispay-db-credentials -n axispay-data -o jsonpath='{.data.POSTGRES_PASSWORD}' | base64 -d
 ```
+
+Expected result:
+- The output lists the resource names or details you expected to inspect.
+- You should be able to see the object or the status you are checking.
 This shows the stored value. It is a good reminder that base64 is not encryption.
 
 Why this matters:
@@ -51,3 +76,7 @@ What you should expect to see: the validation command finishes successfully.
 ```bash
 make validate-lab LAB=L3.2
 ```
+
+Expected result:
+- The validation command finishes successfully.
+- You should see a passing message for the lab.

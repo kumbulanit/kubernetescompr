@@ -4,6 +4,19 @@ This lab is about creating the services that the platform needs to store and mov
 
 In simple words: your app usually needs a database, a cache, and a message broker.
 
+### What this concept means
+The data tier is the set of services that support the application with durable data and messaging. In this lab, that usually means PostgreSQL for structured data, Redis for caching, and RabbitMQ for asynchronous messages between services.
+
+These systems are not just extra services. They are part of the platform's backbone. If a database is missing, the application cannot save its important state. If Redis is missing, performance may drop. If RabbitMQ is missing, messages may pile up or stop moving.
+
+```mermaid
+flowchart LR
+  App[Application] --> Postgres[PostgreSQL]
+  App --> Redis[Redis]
+  App --> Rabbit[RabbitMQ]
+```
+
+
 Do this first:
 What you should expect to see: you understand the goal of the lab and the files involved.
 
@@ -22,6 +35,11 @@ What you should expect to see: the command runs without errors and the result ma
 ```bash
 kubectl apply -f manifests/
 ```
+
+Expected result:
+- The command finishes without errors.
+- You should see messages such as `created` or `configured` for the resources.
+- A follow-up `kubectl get` command should show the objects you created.
 This creates the data-tier resources in the cluster.
 
 Then do this:
@@ -31,6 +49,10 @@ What you should expect to see: the command runs without errors and the result ma
 kubectl get pods -n axispay-data
 kubectl get svc -n axispay-data
 ```
+
+Expected result:
+- The output lists the resource names or details you expected to inspect.
+- You should be able to see the object or the status you are checking.
 This shows whether the data services are starting up and becoming ready.
 
 Then do this:
@@ -50,3 +72,7 @@ What you should expect to see: the validation command finishes successfully.
 ```bash
 make validate-lab LAB=L3.5
 ```
+
+Expected result:
+- The validation command finishes successfully.
+- You should see a passing message for the lab.
