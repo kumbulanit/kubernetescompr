@@ -1,77 +1,212 @@
 # L3.3 · Persistent volumes
 
-This lab is about keeping data even after a pod is deleted or restarted.
+| | |
+|---|---|
+| **Time** | 35 minutes |
+| **Difficulty** | Conceptually simple, operationally important |
+| **You need first** | L3.1 and L3.2 complete |
+| **You will do** | Create a manual PV and PVC, inspect the binding, and notice the reclaim policy |
+| **Check you are done** | `make validate-lab LAB=L3.3` |
 
-In simple words: a container file system is temporary. If you want data to survive, you need a persistent volume.
+---
 
-### What this concept means
-A persistent volume is storage that lives outside the container filesystem. Containers are temporary by design, but databases and other stateful applications need storage that survives restarts, rescheduling, or pod replacements.
+<details>
+<summary><b>First time in a terminal? Open this.</b></summary>
 
-The relationship is simple: a pod asks for storage through a PVC, and Kubernetes maps that request to a persistent volume that can satisfy it. In other words, the PVC is the request, and the PV is the actual piece of storage that backs it.
+- A container filesystem is temporary unless you mount external storage.
+- Read every storage transcript carefully: `Bound`, `Available`, and `Pending` mean different things.
+- Full version: [`labs/GETTING-STARTED.md`](../../../GETTING-STARTED.md).
+</details>
 
-```mermaid
-flowchart LR
-  Pod[Pod] --> PVC[PersistentVolumeClaim]
-  PVC --> PV[PersistentVolume]
-  PV --> Disk[Storage Backend]
-```
+---
 
+## What you are going to do
 
-Do this first:
-What you should expect to see: you understand the goal of the lab and the files involved.
+Here you create the classic Kubernetes storage chain:
 
-1. Open `manifests/01-storageclass.yaml`.
-2. Open `manifests/02-pv-ledger-archive.yaml`.
-3. Notice that the storage objects are separate from the app pod.
+- a **PersistentVolume** called `axispay-ledger-archive`
+- a **PersistentVolumeClaim** called `ledger-archive`
+- a reclaim policy of **Retain**, because losing ledger data is not acceptable
 
-Why this matters:
-- pods can disappear
-- your data should not disappear with them
-- storage needs a stable home
+The main idea is this:
 
-Then do this:
-What you should expect to see: the command runs without errors and the result matches the explanation above.
+- the **PVC** is the application's request
+- the **PV** is the actual storage object
+- the pod uses the **PVC**, not the PV directly
+
+![PersistentVolume, PersistentVolumeClaim and StorageClass relationship](../../images/pvc-storageclass.png)
+
+Diagram source: Kubernetes documentation/blog (CC BY 4.0), “Resizing Persistent Volumes using Kubernetes”.
+
+---
+
+## What is in this folder
+
+| File | What it is |
+|---|---|
+| `README.md` | This lab. |
+| `manifests/01-storageclass.yaml` | A Day 3 `StorageClass` you will use later for dynamic provisioning. |
+| `manifests/02-pv-ledger-archive.yaml` | A manual PV plus a PVC that binds to it. |
+
+---
+
+## Step 1 — Create the storage objects
+
+**Run this:**
 
 ```bash
 kubectl apply -f manifests/
 ```
 
 Expected result:
-- The command finishes without errors.
-- You should see messages such as `created` or `configured` for the resources.
-- A follow-up `kubectl get` command should show the objects you created.
-This creates the storage objects.
 
-Then do this:
-What you should expect to see: the command runs without errors and the result matches the explanation above.
+```text
+$ kubectl apply -f manifests/
+storageclass.storage.k8s.io/axispay-standard created
+persistentvolume/axispay-ledger-archive created
+persistentvolumeclaim/ledger-archive created
+```
+
+---
+
+## Step 2 — Check the binding
+
+**Run this:**
 
 ```bash
-kubectl get storageclass
-kubectl get pv
-kubectl get pvc -A
+kubectl get storageclass axispay-standard
+kubectl get pv axispay-ledger-archive
+kubectl get pvc ledger-archive -n axispay-core
 ```
 
 Expected result:
-- The output lists the resource names or details you expected to inspect.
-- You should be able to see the object or the status you are checking.
-This shows the storage class, the volume, and the claim.
 
-Then do this:
-What you should expect to see: the command runs without errors and the result matches the explanation above.
+```text
+$ kubectl get storageclass axispay-standard
+NAME               PROVISIONER                RECLAIMPOLICY   VOLUMEBINDINGMODE      ALLOWVOLUMEEXPANSION   AGE
+axispay-standard   k8s.io/minikube-hostpath   Retain          WaitForFirstConsumer   true                   11s
 
-Think about how a pod would mount that volume and write files into it.
+$ kubectl get pv axispay-ledger-archive
+NAME                     CAPACITY   ACCESS MODES   RECLAIM POLICY   STATUS   CLAIM                        STORAGECLASS     VOLUMEMODE   AGE
+axispay-ledger-archive   2Gi        RWO            Retain           Bound    axispay-core/ledger-archive axispay-manual   Filesystem   10s
 
-Why this matters:
-- the volume is not the app
-- the volume is the place where the app data lives
-- the app can be replaced, but the data can stay
+$ kubectl get pvc ledger-archive -n axispay-core
+NAME             STATUS   VOLUME                   CAPACITY   ACCESS MODES   STORAGECLASS     VOLUMEMODE   AGE
+ledger-archive   Bound    axispay-ledger-archive   2Gi        RWO            axispay-manual   Filesystem   10s
+```
 
-Check your work:
-What you should expect to see: the validation command finishes successfully.
+`Bound` is the good state. It means Kubernetes matched the claim to a real volume.
+
+---
+
+## Step 3 — Inspect the PV properly
+
+**Run this:**
+
+```bash
+kubectl describe pv axispay-ledger-archive
+```
+
+Expected result:
+
+```text
+$ kubectl describe pv axispay-ledger-archive
+Name:            axispay-ledger-archive
+Labels:          <none>
+StorageClass:    axispay-manual
+Status:          Bound
+Claim:           axispay-core/ledger-archive
+Reclaim Policy:  Retain
+Access Modes:    RWO
+VolumeMode:      Filesystem
+Capacity:        2Gi
+Node Affinity:
+  Required Terms:
+    Term 0:        kubernetes.io/hostname in [axispay-m02]
+Message:
+Source:
+    Type:          HostPath (bare host directory volume)
+    Path:          /mnt/axispay/ledger-archive
+    HostPathType:  DirectoryOrCreate
+Events:            <none>
+```
+
+Two details matter here:
+
+1. **`Retain`** means deleting the claim will not silently destroy the data.
+2. **Node affinity** means this disk only makes sense on the node where that path exists.
+
+---
+
+## If something went wrong
+
+If the claim and volume do not match, `Pending` is what you will see.
+
+```text
+$ kubectl get pvc ledger-archive -n axispay-core
+NAME             STATUS    VOLUME   CAPACITY   ACCESS MODES   STORAGECLASS     VOLUMEMODE   AGE
+ledger-archive   Pending                                                     axispay-manual   Filesystem   36s
+
+$ kubectl describe pvc ledger-archive -n axispay-core
+Name:          ledger-archive
+Namespace:     axispay-core
+StorageClass:  axispay-manual
+Status:        Pending
+Volume:
+Labels:        <none>
+Annotations:   <none>
+Capacity:
+Access Modes:
+VolumeMode:    Filesystem
+Events:
+  Type     Reason         Age                 From                         Message
+  ----     ------         ----                ----                         -------
+  Warning  FailedBinding  9s (x4 over 36s)   persistentvolume-controller  no persistent volumes available for this claim and no storage class is set
+```
+
+Why: the claim no longer matches any available PV.
+
+Fix: re-apply `manifests/02-pv-ledger-archive.yaml` and check the claim's `storageClassName`, size, and access mode.
+
+---
+
+## Cheat Sheet / Tips & Tricks
+
+Quick commands:
+- `kubectl get pv axispay-ledger-archive` — check whether the manual PV exists and whether it is `Available` or `Bound`.
+- `kubectl get pvc ledger-archive -n axispay-core` — see whether the application's claim has attached to the volume.
+- `kubectl get pv,pvc -A` — compare cluster-wide volumes and claims in one table when binding is confusing.
+- `kubectl describe pv axispay-ledger-archive` — inspect reclaim policy, node affinity, and the host path behind the disk.
+- `kubectl describe pvc ledger-archive -n axispay-core` — read the Events section when the claim is stuck in `Pending`.
+
+Tips & tricks:
+- The pod should use the PVC, not the PV directly. Think of the PVC as the app's storage request.
+- `Pending` usually means the claim does not match a real volume yet. Check size, access mode, and `storageClassName` together.
+- `Retain` is the safe policy for important data because deleting the claim does not automatically delete the stored files.
+- This PV uses `hostPath` plus node affinity, so the data is tied to one node. If the workload lands elsewhere, storage will not work.
+
+---
+
+## Check your work
+
+**Run this:**
+
 ```bash
 make validate-lab LAB=L3.3
 ```
 
 Expected result:
-- The validation command finishes successfully.
-- You should see a passing message for the lab.
+
+```text
+$ make validate-lab LAB=L3.3
+
+L3.3 — PersistentVolumes and Claims
+----------------------------------------------------------------
+  ✓ PV axispay-ledger-archive exists
+  ✓ pvc axispay-core/ledger-archive exists
+  ✓ PVC is Bound
+  ✓ reclaimPolicy=Retain — a ledger survives an accidental delete
+  ✓ hostPath PV declares nodeAffinity
+
+✓ L3.3 PASSED — 5/5 checks
+```

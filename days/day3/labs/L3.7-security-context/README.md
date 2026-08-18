@@ -1,74 +1,245 @@
 # L3.7 · Security context
 
-This lab is about making a container safer by changing how it runs.
+| | |
+|---|---|
+| **Time** | 30 minutes |
+| **Difficulty** | Small YAML change, big security effect |
+| **You need first** | L3.5 complete |
+| **You will do** | Apply a pod and container hardening baseline, then verify UID, capabilities, and writable paths |
+| **Check you are done** | `make validate-lab LAB=L3.7` |
 
-In simple words: do not run a container as root if it does not need to.
+---
 
-### What this concept means
-A security context is a way to tell Kubernetes how a container should run. It can reduce risk by making the container run as a non-root user, stop privilege escalation, or make the filesystem read-only.
+<details>
+<summary><b>First time in a terminal? Open this.</b></summary>
 
-This is important because many containers are not designed to be exposed to the world. A small hardening step can reduce the impact of mistakes or attacks. It is not the same as a full security program, but it is a practical and common first step.
+- `runAsNonRoot` and `readOnlyRootFilesystem` are safety controls, not performance tuning.
+- A container can be `Running` and still be dangerously over-privileged.
+- Full version: [`labs/GETTING-STARTED.md`](../../../GETTING-STARTED.md).
+</details>
 
-```mermaid
-flowchart LR
-  Container[Container] --> Security[Security Context]
-  Security --> NonRoot[Run as non-root]
-  Security --> ReadOnly[Read-only filesystem]
-```
+---
 
+## What you are going to do
 
-Do this first:
-What you should expect to see: you understand the goal of the lab and the files involved.
+This lab applies the same hardening pattern to several AxisPay Deployments:
 
-1. Open `manifests/01-securitycontext.yaml`.
-2. Open `manifests/02-hardened-deployments.yaml`.
-3. Notice the settings that make the container more locked down.
+- pod runs as UID/GID `10001`
+- `runAsNonRoot: true`
+- `seccompProfile: RuntimeDefault`
+- container drops **all** Linux capabilities
+- `allowPrivilegeEscalation: false`
+- root filesystem is read-only, with a small writable `/tmp`
 
-Why this matters:
-- a container running as root has more power
-- a read-only file system makes changes harder
-- small security changes can reduce risk
+![Kubernetes user namespaces and safer container identity](../../images/userns-security.svg)
 
-Then do this:
-What you should expect to see: the command runs without errors and the result matches the explanation above.
+Diagram source: Kubernetes blog/documentation (CC BY 4.0), “User namespaces beta”. This diagram is about user-identity isolation, which is closely related to why Day 3 hardening moves containers away from root.
+
+---
+
+## What is in this folder
+
+| File | What it is |
+|---|---|
+| `README.md` | This lab. |
+| `manifests/01-securitycontext.yaml` | A ConfigMap that documents the baseline hardening settings. |
+| `manifests/02-hardened-deployments.yaml` | Deployment patches for edge and core services. |
+
+---
+
+## Step 1 — Apply the hardening baseline
+
+**Run this:**
 
 ```bash
 kubectl apply -f manifests/
 ```
 
 Expected result:
-- The command finishes without errors.
-- You should see messages such as `created` or `configured` for the resources.
-- A follow-up `kubectl get` command should show the objects you created.
-This applies the safer settings to the workload.
 
-Then do this:
-What you should expect to see: the command runs without errors and the result matches the explanation above.
+```text
+$ kubectl apply -f manifests/
+configmap/axispay-security-baseline created
+deployment.apps/edge-gateway configured
+deployment.apps/auth-service configured
+deployment.apps/merchant-service configured
+deployment.apps/payment-service configured
+deployment.apps/fraud-service configured
+deployment.apps/routing-service configured
+```
+
+The Deployments are reconfigured, so Kubernetes will roll out new pods from the hardened template.
+
+---
+
+## Step 2 — Wait for one hardened rollout and inspect it
+
+**Run this:**
 
 ```bash
-kubectl describe pod -n axispay-core <pod-name>
+kubectl rollout status deployment/payment-service -n axispay-core
+kubectl describe pod -n axispay-core -l app.kubernetes.io/name=payment-service
 ```
 
 Expected result:
-- The output lists the resource names or details you expected to inspect.
-- You should be able to see the object or the status you are checking.
-This shows the security values that were applied to the pod.
 
-Then do this:
-What you should expect to see: the command runs without errors and the result matches the explanation above.
+```text
+$ kubectl rollout status deployment/payment-service -n axispay-core
+Waiting for deployment "payment-service" rollout to finish: 1 out of 3 new replicas have been updated...
+Waiting for deployment "payment-service" rollout to finish: 2 out of 3 new replicas have been updated...
+deployment "payment-service" successfully rolled out
 
-Think about how the container behaves differently now.
+$ kubectl describe pod -n axispay-core -l app.kubernetes.io/name=payment-service
+Name:             payment-service-6b9d5f5d6c-jh2sx
+Namespace:        axispay-core
+Priority:         0
+Node:             axispay-m03/192.168.49.13
+Start Time:       Tue, 18 Aug 2026 22:06:34 +0200
+Status:           Running
+IP:               10.244.3.18
+Controlled By:    ReplicaSet/payment-service-6b9d5f5d6c
+Containers:
+  payment-service:
+    State:          Running
+    Ready:          True
+    Security Context:
+      Allow Privilege Escalation:  false
+      Read Only Root Filesystem:   true
+      Capabilities:
+        Drop:
+          ALL
+    Mounts:
+      /tmp from tmp (rw)
+      /var/run/secrets/kubernetes.io/serviceaccount from kube-api-access-7fcv8 (ro)
+Conditions:
+  Type              Status
+  Initialized       True
+  Ready             True
+  ContainersReady   True
+  PodScheduled      True
+Events:
+  Type    Reason     Age   From               Message
+  ----    ------     ----  ----               -------
+  Normal  Scheduled  49s   default-scheduler  Successfully assigned axispay-core/payment-service-6b9d5f5d6c-jh2sx to axispay-m03
+  Normal  Started    46s   kubelet            Started container payment-service
+```
 
-Why this matters:
-- hardening is a basic safety step
-- it is better to start with safe defaults than to fix things later
+---
 
-Check your work:
-What you should expect to see: the validation command finishes successfully.
+## Step 3 — Verify the runtime user and effective capabilities
+
+**Run this:**
+
+```bash
+kubectl exec -n axispay-core deploy/payment-service -- id
+kubectl exec -n axispay-core deploy/payment-service -- grep CapEff /proc/1/status
+```
+
+Expected result:
+
+```text
+$ kubectl exec -n axispay-core deploy/payment-service -- id
+uid=10001 gid=10001 groups=10001
+
+$ kubectl exec -n axispay-core deploy/payment-service -- grep CapEff /proc/1/status
+CapEff:	0000000000000000
+```
+
+This is the proof that matters:
+
+- not root
+- no effective Linux capabilities
+
+---
+
+## Step 4 — Prove `/tmp` is writable but the root filesystem is not
+
+**Run this:**
+
+```bash
+kubectl exec -n axispay-core deploy/payment-service -- sh -c 'touch /tmp/ok && echo wrote-tmp && touch /root/should-fail'
+```
+
+Expected result:
+
+```text
+$ kubectl exec -n axispay-core deploy/payment-service -- sh -c 'touch /tmp/ok && echo wrote-tmp && touch /root/should-fail'
+wrote-tmp
+touch: /root/should-fail: Read-only file system
+command terminated with exit code 1
+```
+
+That is the exact behaviour you want: only the explicitly allowed scratch path is writable.
+
+---
+
+## If something went wrong
+
+If a container still runs as root, the runtime evidence looks very different:
+
+```text
+$ kubectl exec -n axispay-core deploy/payment-service -- id
+uid=0(root) gid=0(root) groups=0(root)
+
+$ kubectl exec -n axispay-core deploy/payment-service -- grep CapEff /proc/1/status
+CapEff:	00000000a80425fb
+```
+
+Why: the pod template did not apply the Day 3 hardening settings.
+
+Fix: re-apply `manifests/02-hardened-deployments.yaml` and wait for the rollout to finish.
+
+---
+
+## Cheat Sheet / Tips & Tricks
+
+Quick commands:
+- `kubectl describe pod -n axispay-core -l app.kubernetes.io/name=payment-service` — inspect the applied security settings on a live hardened pod.
+- `kubectl exec -n axispay-core deploy/payment-service -- id` — verify the process runs as UID/GID `10001`, not root.
+- `kubectl exec -n axispay-core deploy/payment-service -- grep CapEff /proc/1/status` — prove the container has zero effective Linux capabilities.
+- `kubectl exec -n axispay-core deploy/payment-service -- sh -c 'touch /tmp/ok && echo wrote-tmp && touch /root/should-fail'` — test the writable scratch space and read-only root filesystem.
+- `kubectl get deploy payment-service -n axispay-core -o yaml` — inspect pod-level and container-level `securityContext` fields in the template.
+
+Tips & tricks:
+- A pod can be `Running` and still be unsafe. Always check the actual runtime user and capabilities.
+- `runAsNonRoot: true` protects you only when the image and pod settings really result in a non-root UID such as `10001`.
+- `readOnlyRootFilesystem: true` usually means you must provide a writable scratch path like `/tmp` for apps that need temporary files.
+- Pod-level settings handle identity (`runAsUser`, `fsGroup`, `seccompProfile`), while container-level settings handle privilege details such as `allowPrivilegeEscalation` and dropped capabilities.
+
+---
+
+## Check your work
+
+**Run this:**
+
 ```bash
 make validate-lab LAB=L3.7
 ```
 
 Expected result:
-- The validation command finishes successfully.
-- You should see a passing message for the lab.
+
+```text
+$ make validate-lab LAB=L3.7
+
+L3.7 — securityContext hardening
+----------------------------------------------------------------
+  ✓ edge-gateway: non-root, read-only rootfs, drop ALL, no escalation
+  ✓ auth-service: non-root, read-only rootfs, drop ALL, no escalation
+  ✓ merchant-service: non-root, read-only rootfs, drop ALL, no escalation
+  ✓ payment-service: non-root, read-only rootfs, drop ALL, no escalation
+  ✓ fraud-service: non-root, read-only rootfs, drop ALL, no escalation
+  ✓ routing-service: non-root, read-only rootfs, drop ALL, no escalation
+
+Effective runtime user
+----------------------------------------------------------------
+  ✓ runs as uid 10001 (not root)
+  ✓ CapEff=0000000000000000 — zero capabilities
+
+Data tier runs non-root too
+----------------------------------------------------------------
+  ✓ postgres: runAsNonRoot with fsGroup=999
+  ✓ redis: runAsNonRoot with fsGroup=999
+  ✓ rabbitmq: runAsNonRoot with fsGroup=999
+
+✓ L3.7 PASSED — 11/11 checks
+```
