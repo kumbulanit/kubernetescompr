@@ -1,135 +1,86 @@
-# ==============================================================================
-# ServiceMonitors — how Prometheus finds AxisPay
-# ==============================================================================
-# A ServiceMonitor is a CUSTOM RESOURCE owned by the Prometheus Operator. It is
-# not part of Kubernetes. `kubectl apply` will accept this file happily on a
-# cluster with no operator installed and then nothing will happen — the object
-# exists, nobody reads it. That silent no-op is the first thing to check when
-# a target does not appear.
-#
-#   kubectl get servicemonitor -A
-#   kubectl get crd | grep monitoring.coreos.com
-#
-# WHAT IT ACTUALLY DOES
-# The operator watches ServiceMonitors, generates a Prometheus scrape config
-# from them, and reloads Prometheus. You never edit prometheus.yml. That is the
-# whole point of the operator pattern: you declare intent as a Kubernetes
-# object and a controller reconciles the real configuration to match.
-#
-# IT SELECTS SERVICES, NOT PODS
-# This matters more than it looks. Prometheus discovers the ENDPOINTS behind
-# the Service, so a pod that is failing readiness is not scraped. A starting
-# pod reports nonsense — half-initialised counters, no traffic — and scraping
-# it would drag your averages around for no reason. Selecting the Service gets
-# you readiness-gating for free.
-#
-# THE `release` LABEL IS LOAD-BEARING
-# kube-prometheus-stack configures its Prometheus with
-# `serviceMonitorSelector: matchLabels: {release: kube-prometheus-stack}`.
-# A ServiceMonitor without that label is ignored — correct YAML, valid object,
-# no targets. This is the single most common "why is my target missing"
-# answer, and it is worth showing on purpose in L5.4.
-#
-# Verify:  Prometheus UI -> Status -> Targets
-#          kubectl -n axispay-observability port-forward svc/kube-prometheus-stack-prometheus 9090
-# ==============================================================================
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
   name: axispay-edge
   namespace: axispay-edge
-  labels:
-    app.kubernetes.io/part-of: axispay
-    axispay.io/day-introduced: "5"
-    release: kube-prometheus-stack     # without this, Prometheus ignores the object
 spec:
   namespaceSelector:
-    matchNames: [axispay-edge]
+    matchNames:
+    - axispay-edge
   selector:
     matchLabels:
       app.kubernetes.io/part-of: axispay
   endpoints:
-    - port: http                       # the PORT NAME on the Service, not a number
-      path: /metrics
-      interval: 30s
-      scrapeTimeout: 10s
-      # Drop the two highest-cardinality series before they are stored.
-      # Every label VALUE combination is a separate time series; a path label
-      # that contains payment IDs would create one series per payment and
-      # eventually take Prometheus down. The application already collapses
-      # paths to route templates — this is the second line of defence.
-      metricRelabelings:
-        - sourceLabels: [__name__]
-          regex: "python_gc_.*|process_.*"
-          action: drop
+  - port: http
+    path: /metrics
+    interval: 30s
+    scrapeTimeout: 10s
+    metricRelabelings:
+    - sourceLabels:
+      - __name__
+      regex: python_gc_.*|process_.*
+      action: drop
 ---
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
   name: axispay-core
   namespace: axispay-core
-  labels:
-    app.kubernetes.io/part-of: axispay
-    axispay.io/day-introduced: "5"
-    release: kube-prometheus-stack
 spec:
   namespaceSelector:
-    matchNames: [axispay-core]
+    matchNames:
+    - axispay-core
   selector:
     matchLabels:
       app.kubernetes.io/part-of: axispay
   endpoints:
-    - port: http
-      path: /metrics
-      interval: 15s                    # the payment path is scraped twice as often
-      scrapeTimeout: 10s
-      metricRelabelings:
-        - sourceLabels: [__name__]
-          regex: "python_gc_.*|process_.*"
-          action: drop
+  - port: http
+    path: /metrics
+    interval: 15s
+    scrapeTimeout: 10s
+    metricRelabelings:
+    - sourceLabels:
+      - __name__
+      regex: python_gc_.*|process_.*
+      action: drop
 ---
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
   name: axispay-async
   namespace: axispay-async
-  labels:
-    app.kubernetes.io/part-of: axispay
-    axispay.io/day-introduced: "5"
-    release: kube-prometheus-stack
 spec:
   namespaceSelector:
-    matchNames: [axispay-async]
+    matchNames:
+    - axispay-async
   selector:
     matchLabels:
       app.kubernetes.io/part-of: axispay
   endpoints:
-    - port: http
-      path: /metrics
-      interval: 30s
-      scrapeTimeout: 10s
-      metricRelabelings:
-        - sourceLabels: [__name__]
-          regex: "python_gc_.*|process_.*"
-          action: drop
+  - port: http
+    path: /metrics
+    interval: 30s
+    scrapeTimeout: 10s
+    metricRelabelings:
+    - sourceLabels:
+      - __name__
+      regex: python_gc_.*|process_.*
+      action: drop
 ---
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
   name: axispay-ops
   namespace: axispay-ops
-  labels:
-    app.kubernetes.io/part-of: axispay
-    axispay.io/day-introduced: "5"
-    release: kube-prometheus-stack
 spec:
   namespaceSelector:
-    matchNames: [axispay-ops]
+    matchNames:
+    - axispay-ops
   selector:
     matchLabels:
       app.kubernetes.io/part-of: axispay
   endpoints:
-    - port: http
-      path: /metrics
-      interval: 30s
-      scrapeTimeout: 10s
+  - port: http
+    path: /metrics
+    interval: 30s
+    scrapeTimeout: 10s

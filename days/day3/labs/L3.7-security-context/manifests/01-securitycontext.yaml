@@ -1,52 +1,15 @@
-# ==============================================================================
-# securityContext — hardening every AxisPay application workload
-# ==============================================================================
-# Defence in depth, applied at two levels:
-#
-#   the IMAGE already sets USER 10001  — a correct image is safe on any platform
-#   the POD SPEC enforces it here      — the cluster verifies rather than trusts
-#
-# Neither alone is enough. An image can regress in a future build; a pod spec
-# can be copied without the securityContext. Both, and a careless change is
-# caught by one of them.
-#
-# Apply with:  kubectl apply -f manifests/day3/security/
-# Day 5 makes this MANDATORY at the namespace level with Pod Security Admission.
-# ==============================================================================
 apiVersion: v1
 kind: ConfigMap
 metadata:
   name: axispay-security-baseline
   namespace: axispay-core
-  labels:
-    app.kubernetes.io/part-of: axispay
-    axispay.io/day-introduced: "3"
-  annotations:
-    axispay.io/description: >-
-      Reference securityContext for every AxisPay workload. Documented here as
-      the standard; applied to each Deployment in manifests/day3/security/.
 data:
-  pod-security-context.yaml: |
-    # ---- POD level: applies to every container ----
-    securityContext:
-      runAsNonRoot: true            # kubelet REFUSES to start the pod if the
-                                    # image's user resolves to uid 0
-      runAsUser: 10001
-      runAsGroup: 10001
-      fsGroup: 10001                # chown mounted volumes so a non-root
-                                    # process can actually write to them
-      seccompProfile:
-        type: RuntimeDefault        # block ~44 dangerous syscalls
-  container-security-context.yaml: |
-    # ---- CONTAINER level ----
-    securityContext:
-      allowPrivilegeEscalation: false   # blocks setuid binaries from gaining
-                                        # privileges the parent did not have
-      readOnlyRootFilesystem: true      # a compromised process cannot write a
-                                        # payload to disk. Needs an emptyDir
-                                        # for anything genuinely temporary.
-      capabilities:
-        drop: ["ALL"]                   # containers get ~14 caps by default,
-                                        # including NET_RAW (packet crafting).
-                                        # A web service needs none of them.
-      privileged: false
+  pod-security-context.yaml: "securityContext:\n  runAsNonRoot: true            #\
+    \ kubelet REFUSES to start the pod if the\n  runAsUser: 10001\n  runAsGroup: 10001\n\
+    \  fsGroup: 10001                # chown mounted volumes so a non-root\n  seccompProfile:\n\
+    \    type: RuntimeDefault        # block ~44 dangerous syscalls\n"
+  container-security-context.yaml: "securityContext:\n  allowPrivilegeEscalation:\
+    \ false   # blocks setuid binaries from gaining\n  readOnlyRootFilesystem: true\
+    \      # a compromised process cannot write a\n  capabilities:\n    drop: [\"\
+    ALL\"]                   # containers get ~14 caps by default,\n  privileged:\
+    \ false\n"

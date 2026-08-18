@@ -1,63 +1,35 @@
-# ==============================================================================
-# A STATIC PersistentVolume — the ledger archive
-# ==============================================================================
-# Everything else on Day 3 uses dynamic provisioning. This one is static on
-# purpose, so you can see both halves of the claim/bind contract:
-#
-#   an administrator creates the PV  (supply)
-#   a developer creates the PVC      (demand)
-#   the control plane BINDS them if capacity, access mode and class agree
-#
-# Real-world equivalent: a pre-existing NFS export or a SAN LUN that the
-# storage team hands you. You do not provision it; you claim it.
-# ==============================================================================
 apiVersion: v1
 kind: PersistentVolume
 metadata:
   name: axispay-ledger-archive
-  labels:
-    app.kubernetes.io/part-of: axispay
-    axispay.io/day-introduced: "3"
-    axispay.io/purpose: ledger-archive
 spec:
   capacity:
     storage: 2Gi
   accessModes:
-    # ReadWriteOnce = one NODE may mount it read-write. NOT "one pod" — several
-    # pods on the SAME node can share an RWO volume. This is the most commonly
-    # misread field in Kubernetes storage.
-    - ReadWriteOnce
+  - ReadWriteOnce
   persistentVolumeReclaimPolicy: Retain
   storageClassName: axispay-manual
   hostPath:
     path: /mnt/axispay/ledger-archive
     type: DirectoryOrCreate
-  # On a multi-node cluster a hostPath volume exists on exactly ONE node. Without
-  # this affinity the scheduler may place the pod elsewhere and the mount fails
-  # (or worse, succeeds against an empty directory and the data appears to have
-  # vanished). This is taught deliberately in L3.6 — see the storage trap.
   nodeAffinity:
     required:
       nodeSelectorTerms:
-        - matchExpressions:
-            - key: kubernetes.io/hostname
-              operator: In
-              values: ["axispay-m02"]
+      - matchExpressions:
+        - key: kubernetes.io/hostname
+          operator: In
+          values:
+          - axispay-m02
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
   name: ledger-archive
   namespace: axispay-core
-  labels:
-    app.kubernetes.io/part-of: axispay
-    axispay.io/day-introduced: "3"
 spec:
-  accessModes: [ReadWriteOnce]
+  accessModes:
+  - ReadWriteOnce
   storageClassName: axispay-manual
   resources:
     requests:
-      # A claim binds to a PV with AT LEAST this capacity. Ask for 5Gi against
-      # a 2Gi PV and the claim stays Pending forever, with no error on the PVC
-      # itself — you have to read the events. That is INC-3.
       storage: 1Gi
