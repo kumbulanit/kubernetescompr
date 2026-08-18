@@ -1,65 +1,32 @@
-# ==============================================================================
-# STEP 1 — default deny. Apply this FIRST and everything breaks.
-# ==============================================================================
-# NetworkPolicy is ADDITIVE and DEFAULT-ALLOW. A pod is unrestricted until at
-# least one policy selects it; from that moment, only what a policy explicitly
-# permits is allowed. There is no "deny" rule — you deny by selecting a pod and
-# then not allowing the traffic.
-#
-# So a default-deny policy is simply one that selects everything and permits
-# nothing:
-#
-#     podSelector: {}        <- every pod in this namespace
-#     policyTypes: both      <- and both directions
-#     (no ingress/egress rules at all)
-#
-# APPLY THIS AND THE PLATFORM STOPS WORKING. That is expected, and it is the
-# right order: deny everything, then allow back exactly what you can justify.
-# Building the allow-list first and hoping you covered everything is how you
-# end up with a policy set that looks strict and enforces nothing.
-#
-# REQUIRES A CNI THAT ENFORCES POLICY. Minikube's default does NOT. Without
-# Calico these objects apply cleanly and protect nothing — which is the worst
-# possible outcome in a security module. Verify with:
-#     kubectl get daemonset -n kube-system calico-node
-# ==============================================================================
----
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: default-deny-all
   namespace: axispay-core
-  labels:
-    app.kubernetes.io/part-of: axispay
-    axispay.io/day-introduced: "4"
-  annotations:
-    axispay.io/description: "Cardholder data environment — deny everything, then allow-list"
 spec:
   podSelector: {}
-  policyTypes: [Ingress, Egress]
+  policyTypes:
+  - Ingress
+  - Egress
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: default-deny-all
   namespace: axispay-data
-  labels:
-    app.kubernetes.io/part-of: axispay
-    axispay.io/day-introduced: "4"
-  annotations:
-    axispay.io/description: "The vault. Nothing reaches the data tier unless named below."
 spec:
   podSelector: {}
-  policyTypes: [Ingress, Egress]
+  policyTypes:
+  - Ingress
+  - Egress
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: default-deny-all
   namespace: axispay-async
-  labels:
-    app.kubernetes.io/part-of: axispay
-    axispay.io/day-introduced: "4"
 spec:
   podSelector: {}
-  policyTypes: [Ingress, Egress]
+  policyTypes:
+  - Ingress
+  - Egress

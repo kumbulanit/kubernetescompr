@@ -1,95 +1,116 @@
-# ==============================================================================
-# STEP 3 — who may talk TO the cardholder data environment
-# ==============================================================================
-# Rule S1/S2 from the architecture: only axispay-edge may enter the CDE, and
-# only to the services it genuinely calls. Note what is NOT here: nothing
-# grants axispay-edge access to axispay-data. That omission IS the control.
-# ==============================================================================
----
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: allow-edge-to-payment
   namespace: axispay-core
-  labels: { app.kubernetes.io/part-of: axispay, axispay.io/day-introduced: "4" }
 spec:
   podSelector:
-    matchLabels: { app.kubernetes.io/name: payment-service }
-  policyTypes: [Ingress]
+    matchLabels:
+      app.kubernetes.io/name: payment-service
+  policyTypes:
+  - Ingress
   ingress:
-    - from:
-        - namespaceSelector:
-            matchLabels: { axispay.io/zone: edge }
-          podSelector:
-            matchLabels: { app.kubernetes.io/name: edge-gateway }
-      ports: [{ protocol: TCP, port: 8080 }]
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          axispay.io/zone: edge
+      podSelector:
+        matchLabels:
+          app.kubernetes.io/name: edge-gateway
+    ports:
+    - protocol: TCP
+      port: 8080
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: allow-edge-to-merchant
   namespace: axispay-core
-  labels: { app.kubernetes.io/part-of: axispay, axispay.io/day-introduced: "4" }
 spec:
   podSelector:
-    matchLabels: { app.kubernetes.io/name: merchant-service }
-  policyTypes: [Ingress]
+    matchLabels:
+      app.kubernetes.io/name: merchant-service
+  policyTypes:
+  - Ingress
   ingress:
-    # edge-gateway calls it for /account
-    - from:
-        - namespaceSelector: { matchLabels: { axispay.io/zone: edge } }
-          podSelector: { matchLabels: { app.kubernetes.io/name: edge-gateway } }
-      ports: [{ protocol: TCP, port: 8080 }]
-    # payment-service calls it for pricing on every authorisation
-    - from:
-        - podSelector: { matchLabels: { app.kubernetes.io/name: payment-service } }
-      ports: [{ protocol: TCP, port: 8080 }]
-    # notification-service calls it for the webhook URL
-    - from:
-        - namespaceSelector: { matchLabels: { axispay.io/zone: async } }
-          podSelector: { matchLabels: { app.kubernetes.io/name: notification-service } }
-      ports: [{ protocol: TCP, port: 8080 }]
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          axispay.io/zone: edge
+      podSelector:
+        matchLabels:
+          app.kubernetes.io/name: edge-gateway
+    ports:
+    - protocol: TCP
+      port: 8080
+  - from:
+    - podSelector:
+        matchLabels:
+          app.kubernetes.io/name: payment-service
+    ports:
+    - protocol: TCP
+      port: 8080
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          axispay.io/zone: async
+      podSelector:
+        matchLabels:
+          app.kubernetes.io/name: notification-service
+    ports:
+    - protocol: TCP
+      port: 8080
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: allow-payment-to-core-services
   namespace: axispay-core
-  labels: { app.kubernetes.io/part-of: axispay, axispay.io/day-introduced: "4" }
-  annotations:
-    axispay.io/description: >-
-      fraud, routing, ledger and customer accept traffic ONLY from
-      payment-service. Not from the gateway, not from each other.
 spec:
   podSelector:
     matchExpressions:
-      - key: app.kubernetes.io/name
-        operator: In
-        values: [fraud-service, routing-service, ledger-service, customer-service]
-  policyTypes: [Ingress]
+    - key: app.kubernetes.io/name
+      operator: In
+      values:
+      - fraud-service
+      - routing-service
+      - ledger-service
+      - customer-service
+  policyTypes:
+  - Ingress
   ingress:
-    - from:
-        - podSelector: { matchLabels: { app.kubernetes.io/name: payment-service } }
-      ports: [{ protocol: TCP, port: 8080 }]
+  - from:
+    - podSelector:
+        matchLabels:
+          app.kubernetes.io/name: payment-service
+    ports:
+    - protocol: TCP
+      port: 8080
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: allow-async-to-payment-read
   namespace: axispay-core
-  labels: { app.kubernetes.io/part-of: axispay, axispay.io/day-introduced: "4" }
-  annotations:
-    axispay.io/description: "settlement and reporting read payments; they never write"
 spec:
   podSelector:
-    matchLabels: { app.kubernetes.io/name: payment-service }
-  policyTypes: [Ingress]
+    matchLabels:
+      app.kubernetes.io/name: payment-service
+  policyTypes:
+  - Ingress
   ingress:
-    - from:
-        - namespaceSelector: { matchLabels: { axispay.io/zone: async } }
-          podSelector:
-            matchExpressions:
-              - key: app.kubernetes.io/name
-                operator: In
-                values: [settlement-service, reporting-service, recon-worker]
-      ports: [{ protocol: TCP, port: 8080 }]
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          axispay.io/zone: async
+      podSelector:
+        matchExpressions:
+        - key: app.kubernetes.io/name
+          operator: In
+          values:
+          - settlement-service
+          - reporting-service
+          - recon-worker
+    ports:
+    - protocol: TCP
+      port: 8080

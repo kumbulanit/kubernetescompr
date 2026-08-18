@@ -1,32 +1,8 @@
-# ==============================================================================
-# StorageClass — dynamic provisioning
-# ==============================================================================
-# Minikube ships a `standard` StorageClass backed by a node-local host path.
-# We declare our own so the manifests are explicit and portable, and so the
-# reclaim policy is a deliberate choice rather than an inherited default.
-# ==============================================================================
 apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
   name: axispay-standard
-  labels:
-    app.kubernetes.io/part-of: axispay
-    axispay.io/day-introduced: "3"
-  annotations:
-    axispay.io/description: "Node-local storage for the training cluster"
 provisioner: k8s.io/minikube-hostpath
-# RETAIN, not Delete. If a PVC holding the payments database is deleted — by a
-# careless `kubectl delete pvc`, or by deleting the namespace — Delete would
-# destroy the volume and the data with it. Retain keeps the PV and its contents
-# in a Released state so a human can recover them.
-#
-# The cost is that released volumes accumulate and must be reclaimed manually.
-# For a payments ledger that is the correct trade, and it is a decision the
-# platform team makes once, here.
 reclaimPolicy: Retain
-# WaitForFirstConsumer, not Immediate. See L3.4 — with Immediate, a volume can
-# be provisioned on node A while the scheduler later places the pod on node B,
-# and the pod is then unschedulable forever. Binding late lets storage and
-# scheduling agree.
 volumeBindingMode: WaitForFirstConsumer
 allowVolumeExpansion: true

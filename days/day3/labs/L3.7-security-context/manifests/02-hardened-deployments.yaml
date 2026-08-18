@@ -1,10 +1,3 @@
-# ==============================================================================
-# Strategic-merge patches applying the security baseline to every app workload.
-#   kubectl apply -f manifests/day3/security/02-hardened-deployments.yaml
-# Each patch merges into the existing Deployment; nothing else is changed.
-# ==============================================================================
----
-# edge-gateway: non-root, read-only root filesystem, all capabilities dropped
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -21,25 +14,22 @@ spec:
         seccompProfile:
           type: RuntimeDefault
       containers:
-        - name: edge-gateway
-          securityContext:
-            allowPrivilegeEscalation: false
-            readOnlyRootFilesystem: true
-            capabilities:
-              drop: ["ALL"]
-          volumeMounts:
-            # readOnlyRootFilesystem breaks anything that writes to /tmp.
-            # An emptyDir gives it somewhere legitimate — in RAM, gone when
-            # the pod dies, and never persisted.
-            - name: tmp
-              mountPath: /tmp
-      volumes:
+      - name: edge-gateway
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
+        volumeMounts:
         - name: tmp
-          emptyDir:
-            medium: Memory
-            sizeLimit: 32Mi
+          mountPath: /tmp
+      volumes:
+      - name: tmp
+        emptyDir:
+          medium: Memory
+          sizeLimit: 32Mi
 ---
-# auth-service: non-root, read-only root filesystem, all capabilities dropped
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -56,25 +46,22 @@ spec:
         seccompProfile:
           type: RuntimeDefault
       containers:
-        - name: auth-service
-          securityContext:
-            allowPrivilegeEscalation: false
-            readOnlyRootFilesystem: true
-            capabilities:
-              drop: ["ALL"]
-          volumeMounts:
-            # readOnlyRootFilesystem breaks anything that writes to /tmp.
-            # An emptyDir gives it somewhere legitimate — in RAM, gone when
-            # the pod dies, and never persisted.
-            - name: tmp
-              mountPath: /tmp
-      volumes:
+      - name: auth-service
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
+        volumeMounts:
         - name: tmp
-          emptyDir:
-            medium: Memory
-            sizeLimit: 32Mi
+          mountPath: /tmp
+      volumes:
+      - name: tmp
+        emptyDir:
+          medium: Memory
+          sizeLimit: 32Mi
 ---
-# merchant-service: non-root, read-only root filesystem, all capabilities dropped
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -91,25 +78,22 @@ spec:
         seccompProfile:
           type: RuntimeDefault
       containers:
-        - name: merchant-service
-          securityContext:
-            allowPrivilegeEscalation: false
-            readOnlyRootFilesystem: true
-            capabilities:
-              drop: ["ALL"]
-          volumeMounts:
-            # readOnlyRootFilesystem breaks anything that writes to /tmp.
-            # An emptyDir gives it somewhere legitimate — in RAM, gone when
-            # the pod dies, and never persisted.
-            - name: tmp
-              mountPath: /tmp
-      volumes:
+      - name: merchant-service
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
+        volumeMounts:
         - name: tmp
-          emptyDir:
-            medium: Memory
-            sizeLimit: 32Mi
+          mountPath: /tmp
+      volumes:
+      - name: tmp
+        emptyDir:
+          medium: Memory
+          sizeLimit: 32Mi
 ---
-# payment-service: non-root, read-only root filesystem, all capabilities dropped
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -126,25 +110,22 @@ spec:
         seccompProfile:
           type: RuntimeDefault
       containers:
-        - name: payment-service
-          securityContext:
-            allowPrivilegeEscalation: false
-            readOnlyRootFilesystem: true
-            capabilities:
-              drop: ["ALL"]
-          volumeMounts:
-            # readOnlyRootFilesystem breaks anything that writes to /tmp.
-            # An emptyDir gives it somewhere legitimate — in RAM, gone when
-            # the pod dies, and never persisted.
-            - name: tmp
-              mountPath: /tmp
-      volumes:
+      - name: payment-service
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
+        volumeMounts:
         - name: tmp
-          emptyDir:
-            medium: Memory
-            sizeLimit: 32Mi
+          mountPath: /tmp
+      volumes:
+      - name: tmp
+        emptyDir:
+          medium: Memory
+          sizeLimit: 32Mi
 ---
-# fraud-service: non-root, read-only root filesystem, all capabilities dropped
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -161,25 +142,22 @@ spec:
         seccompProfile:
           type: RuntimeDefault
       containers:
-        - name: fraud-service
-          securityContext:
-            allowPrivilegeEscalation: false
-            readOnlyRootFilesystem: true
-            capabilities:
-              drop: ["ALL"]
-          volumeMounts:
-            # readOnlyRootFilesystem breaks anything that writes to /tmp.
-            # An emptyDir gives it somewhere legitimate — in RAM, gone when
-            # the pod dies, and never persisted.
-            - name: tmp
-              mountPath: /tmp
-      volumes:
+      - name: fraud-service
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
+        volumeMounts:
         - name: tmp
-          emptyDir:
-            medium: Memory
-            sizeLimit: 32Mi
+          mountPath: /tmp
+      volumes:
+      - name: tmp
+        emptyDir:
+          medium: Memory
+          sizeLimit: 32Mi
 ---
-# routing-service: non-root, read-only root filesystem, all capabilities dropped
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -196,20 +174,18 @@ spec:
         seccompProfile:
           type: RuntimeDefault
       containers:
-        - name: routing-service
-          securityContext:
-            allowPrivilegeEscalation: false
-            readOnlyRootFilesystem: true
-            capabilities:
-              drop: ["ALL"]
-          volumeMounts:
-            # readOnlyRootFilesystem breaks anything that writes to /tmp.
-            # An emptyDir gives it somewhere legitimate — in RAM, gone when
-            # the pod dies, and never persisted.
-            - name: tmp
-              mountPath: /tmp
-      volumes:
+      - name: routing-service
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
+        volumeMounts:
         - name: tmp
-          emptyDir:
-            medium: Memory
-            sizeLimit: 32Mi
+          mountPath: /tmp
+      volumes:
+      - name: tmp
+        emptyDir:
+          medium: Memory
+          sizeLimit: 32Mi

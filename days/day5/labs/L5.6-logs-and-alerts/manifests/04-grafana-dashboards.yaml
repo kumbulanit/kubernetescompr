@@ -1,1698 +1,609 @@
-# ==============================================================================
-# Grafana dashboards — GENERATED FILE, DO NOT EDIT BY HAND
-# ==============================================================================
-# Source:    scripts/build/build-dashboards.py
-# Regenerate: make dashboards
-#
-# The Grafana sidecar shipped with kube-prometheus-stack watches for
-# ConfigMaps labelled `grafana_dashboard: "1"` and provisions whatever JSON it
-# finds inside them. There is no import step and no click path — delete the
-# ConfigMap and the dashboard disappears with it.
-#
-# A dashboard is DATA. Keeping it in version control means it can be reviewed,
-# diffed and rolled back like anything else; the "click around and export"
-# workflow produces something nobody can review.
-#
-#   kubectl get configmap -n axispay-observability -l grafana_dashboard=1
-#   kubectl -n axispay-observability port-forward svc/kube-prometheus-stack-grafana 3000:80
-# ==============================================================================
----
 apiVersion: v1
 kind: ConfigMap
 metadata:
   name: axispay-dashboard-platform
   namespace: axispay-observability
-  labels:
-    grafana_dashboard: "1"
-    app.kubernetes.io/part-of: axispay
-    axispay.io/day-introduced: "5"
 data:
-  axispay-platform.json: |
-    {
-      "uid": "axispay-platform",
-      "title": "AxisPay \u2014 Payment Platform",
-      "description": "Golden signals, business outcomes and workload health for the AxisPay payment platform. Fictional data; training use only.",
-      "tags": [
-        "axispay",
-        "payments",
-        "slo"
-      ],
-      "timezone": "browser",
-      "schemaVersion": 39,
-      "version": 1,
-      "refresh": "30s",
-      "editable": true,
-      "graphTooltip": 1,
-      "time": {
-        "from": "now-1h",
-        "to": "now"
-      },
-      "templating": {
-        "list": [
-          {
-            "name": "DS_PROMETHEUS",
-            "type": "datasource",
-            "query": "prometheus",
-            "current": {
-              "text": "Prometheus",
-              "value": "Prometheus"
-            },
-            "hide": 0
-          },
-          {
-            "name": "DS_LOKI",
-            "type": "datasource",
-            "query": "loki",
-            "current": {
-              "text": "Loki",
-              "value": "Loki"
-            },
-            "hide": 0
-          },
-          {
-            "name": "namespace",
-            "type": "query",
-            "datasource": {
-              "type": "prometheus",
-              "uid": "${DS_PROMETHEUS}"
-            },
-            "query": "label_values(kube_namespace_created{namespace=~\"axispay-.*\"}, namespace)",
-            "refresh": 1,
-            "includeAll": true,
-            "multi": true,
-            "current": {
-              "text": "All",
-              "value": "$__all"
-            }
-          }
-        ]
-      },
-      "annotations": {
-        "list": [
-          {
-            "name": "Deployments",
-            "datasource": {
-              "type": "prometheus",
-              "uid": "${DS_PROMETHEUS}"
-            },
-            "enable": true,
-            "iconColor": "rgba(0, 211, 255, 1)",
-            "expr": "changes(kube_deployment_status_observed_generation{namespace=~\"axispay-.*\"}[1m]) > 0",
-            "titleFormat": "rollout: {{deployment}}"
-          }
-        ]
-      },
-      "panels": [
-        {
-          "id": 1,
-          "type": "row",
-          "title": "Service level \u2014 what the merchant experiences",
-          "collapsed": false,
-          "gridPos": {
-            "h": 1,
-            "w": 24,
-            "x": 0,
-            "y": 0
-          },
-          "panels": []
-        },
-        {
-          "id": 2,
-          "type": "stat",
-          "title": "Payment success rate",
-          "description": "Captured or authorized, over all outcomes. Declines are a correct outcome, not an error \u2014 this panel deliberately does not treat them as failures.",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "gridPos": {
-            "h": 5,
-            "w": 5,
-            "x": 0,
-            "y": 1
-          },
-          "targets": [
-            {
-              "datasource": {
-                "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
-              },
-              "editorMode": "code",
-              "expr": "sum(rate(axispay_payments_total{status=~\"captured|authorized\"}[5m])) / clamp_min(sum(rate(axispay_payments_total[5m])), 0.0001)",
-              "legendFormat": "",
-              "range": false,
-              "instant": true,
-              "refId": "D"
-            }
-          ],
-          "options": {
-            "colorMode": "background",
-            "graphMode": "area",
-            "textMode": "auto",
-            "reduceOptions": {
-              "calcs": [
-                "lastNotNull"
-              ],
-              "fields": "",
-              "values": false
-            }
-          },
-          "fieldConfig": {
-            "defaults": {
-              "unit": "percentunit",
-              "decimals": 2,
-              "thresholds": {
-                "mode": "absolute",
-                "steps": [
-                  {
-                    "color": "red",
-                    "value": null
-                  },
-                  {
-                    "color": "orange",
-                    "value": 0.9
-                  },
-                  {
-                    "color": "green",
-                    "value": 0.97
-                  }
-                ]
-              },
-              "mappings": []
-            },
-            "overrides": []
-          }
-        },
-        {
-          "id": 4,
-          "type": "stat",
-          "title": "p99 latency \u2014 payment API",
-          "description": "SLO is 300ms. The histogram buckets are placed around that threshold so the estimate is accurate exactly where it matters.",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "gridPos": {
-            "h": 5,
-            "w": 5,
-            "x": 5,
-            "y": 1
-          },
-          "targets": [
-            {
-              "datasource": {
-                "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
-              },
-              "editorMode": "code",
-              "expr": "histogram_quantile(0.99, sum by (le) (rate(axispay_http_request_duration_seconds_bucket{service=\"payment-service\"}[5m])))",
-              "legendFormat": "",
-              "range": false,
-              "instant": true,
-              "refId": "F"
-            }
-          ],
-          "options": {
-            "colorMode": "background",
-            "graphMode": "area",
-            "textMode": "auto",
-            "reduceOptions": {
-              "calcs": [
-                "lastNotNull"
-              ],
-              "fields": "",
-              "values": false
-            }
-          },
-          "fieldConfig": {
-            "defaults": {
-              "unit": "s",
-              "decimals": 3,
-              "thresholds": {
-                "mode": "absolute",
-                "steps": [
-                  {
-                    "color": "green",
-                    "value": null
-                  },
-                  {
-                    "color": "orange",
-                    "value": 0.25
-                  },
-                  {
-                    "color": "red",
-                    "value": 0.3
-                  }
-                ]
-              },
-              "mappings": []
-            },
-            "overrides": []
-          }
-        },
-        {
-          "id": 6,
-          "type": "stat",
-          "title": "5xx rate \u2014 all services",
-          "description": "The error budget is 0.5%. Above the red line the SLO is burning.",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "gridPos": {
-            "h": 5,
-            "w": 5,
-            "x": 10,
-            "y": 1
-          },
-          "targets": [
-            {
-              "datasource": {
-                "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
-              },
-              "editorMode": "code",
-              "expr": "sum(rate(axispay_http_requests_total{status=~\"5..\"}[5m])) / clamp_min(sum(rate(axispay_http_requests_total[5m])), 0.0001)",
-              "legendFormat": "",
-              "range": false,
-              "instant": true,
-              "refId": "H"
-            }
-          ],
-          "options": {
-            "colorMode": "background",
-            "graphMode": "area",
-            "textMode": "auto",
-            "reduceOptions": {
-              "calcs": [
-                "lastNotNull"
-              ],
-              "fields": "",
-              "values": false
-            }
-          },
-          "fieldConfig": {
-            "defaults": {
-              "unit": "percentunit",
-              "decimals": 4,
-              "thresholds": {
-                "mode": "absolute",
-                "steps": [
-                  {
-                    "color": "green",
-                    "value": null
-                  },
-                  {
-                    "color": "orange",
-                    "value": 0.002
-                  },
-                  {
-                    "color": "red",
-                    "value": 0.005
-                  }
-                ]
-              },
-              "mappings": []
-            },
-            "overrides": []
-          }
-        },
-        {
-          "id": 8,
-          "type": "stat",
-          "title": "Payments per minute",
-          "description": "Zero here with everything else green is the failure mode that infrastructure alerts cannot see.",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "gridPos": {
-            "h": 5,
-            "w": 4,
-            "x": 15,
-            "y": 1
-          },
-          "targets": [
-            {
-              "datasource": {
-                "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
-              },
-              "editorMode": "code",
-              "expr": "sum(rate(axispay_payments_total[5m])) * 60",
-              "legendFormat": "",
-              "range": false,
-              "instant": true,
-              "refId": "J"
-            }
-          ],
-          "options": {
-            "colorMode": "background",
-            "graphMode": "area",
-            "textMode": "auto",
-            "reduceOptions": {
-              "calcs": [
-                "lastNotNull"
-              ],
-              "fields": "",
-              "values": false
-            }
-          },
-          "fieldConfig": {
-            "defaults": {
-              "unit": "short",
-              "decimals": 1,
-              "thresholds": {
-                "mode": "absolute",
-                "steps": [
-                  {
-                    "color": "red",
-                    "value": null
-                  },
-                  {
-                    "color": "green",
-                    "value": 0.1
-                  }
-                ]
-              },
-              "mappings": []
-            },
-            "overrides": []
-          }
-        },
-        {
-          "id": 10,
-          "type": "stat",
-          "title": "Pods ready",
-          "description": "Ready, not running. A Running pod failing readiness serves nothing.",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "gridPos": {
-            "h": 5,
-            "w": 5,
-            "x": 19,
-            "y": 1
-          },
-          "targets": [
-            {
-              "datasource": {
-                "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
-              },
-              "editorMode": "code",
-              "expr": "sum(kube_deployment_status_replicas_ready{namespace=~\"axispay-.*\"})",
-              "legendFormat": "",
-              "range": false,
-              "instant": true,
-              "refId": "L"
-            }
-          ],
-          "options": {
-            "colorMode": "background",
-            "graphMode": "area",
-            "textMode": "auto",
-            "reduceOptions": {
-              "calcs": [
-                "lastNotNull"
-              ],
-              "fields": "",
-              "values": false
-            }
-          },
-          "fieldConfig": {
-            "defaults": {
-              "unit": "short",
-              "decimals": 0,
-              "thresholds": {
-                "mode": "absolute",
-                "steps": [
-                  {
-                    "color": "red",
-                    "value": null
-                  },
-                  {
-                    "color": "green",
-                    "value": 1
-                  }
-                ]
-              },
-              "mappings": []
-            },
-            "overrides": []
-          }
-        },
-        {
-          "id": 12,
-          "type": "row",
-          "title": "Traffic and latency",
-          "collapsed": false,
-          "gridPos": {
-            "h": 1,
-            "w": 24,
-            "x": 0,
-            "y": 6
-          },
-          "panels": []
-        },
-        {
-          "id": 14,
-          "type": "timeseries",
-          "title": "Requests per second by service",
-          "description": "Probe endpoints are excluded at the application, so this is real traffic \u2014 not the kubelet checking on you every five seconds.",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "gridPos": {
-            "h": 8,
-            "w": 12,
-            "x": 0,
-            "y": 7
-          },
-          "targets": [
-            {
-              "datasource": {
-                "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
-              },
-              "editorMode": "code",
-              "expr": "sum by (service) (rate(axispay_http_requests_total[5m]))",
-              "legendFormat": "{{service}}",
-              "range": true,
-              "instant": false,
-              "refId": "N"
-            }
-          ],
-          "options": {
-            "legend": {
-              "displayMode": "list",
-              "placement": "bottom",
-              "showLegend": true
-            },
-            "tooltip": {
-              "mode": "multi",
-              "sort": "desc"
-            }
-          },
-          "fieldConfig": {
-            "defaults": {
-              "unit": "reqps",
-              "custom": {
-                "drawStyle": "line",
-                "lineWidth": 2,
-                "fillOpacity": 8,
-                "showPoints": "never",
-                "stacking": {
-                  "mode": "none",
-                  "group": "A"
-                },
-                "axisLabel": ""
-              },
-              "thresholds": {
-                "mode": "absolute",
-                "steps": [
-                  {
-                    "color": "green",
-                    "value": null
-                  }
-                ]
-              },
-              "mappings": []
-            },
-            "overrides": []
-          }
-        },
-        {
-          "id": 18,
-          "type": "timeseries",
-          "title": "payment-service latency percentiles",
-          "description": "Watch the GAP between p50 and p99. A wide gap means a slow minority \u2014 usually one bad replica or one slow downstream \u2014 and the average will not show it.",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "gridPos": {
-            "h": 8,
-            "w": 12,
-            "x": 12,
-            "y": 7
-          },
-          "targets": [
-            {
-              "datasource": {
-                "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
-              },
-              "editorMode": "code",
-              "expr": "histogram_quantile(0.50, sum by (le) (rate(axispay_http_request_duration_seconds_bucket{service=\"payment-service\"}[5m])))",
-              "legendFormat": "p50",
-              "range": true,
-              "instant": false,
-              "refId": "P"
-            },
-            {
-              "datasource": {
-                "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
-              },
-              "editorMode": "code",
-              "expr": "histogram_quantile(0.95, sum by (le) (rate(axispay_http_request_duration_seconds_bucket{service=\"payment-service\"}[5m])))",
-              "legendFormat": "p95",
-              "range": true,
-              "instant": false,
-              "refId": "Q"
-            },
-            {
-              "datasource": {
-                "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
-              },
-              "editorMode": "code",
-              "expr": "histogram_quantile(0.99, sum by (le) (rate(axispay_http_request_duration_seconds_bucket{service=\"payment-service\"}[5m])))",
-              "legendFormat": "p99",
-              "range": true,
-              "instant": false,
-              "refId": "R"
-            }
-          ],
-          "options": {
-            "legend": {
-              "displayMode": "list",
-              "placement": "bottom",
-              "showLegend": true
-            },
-            "tooltip": {
-              "mode": "multi",
-              "sort": "desc"
-            }
-          },
-          "fieldConfig": {
-            "defaults": {
-              "unit": "s",
-              "custom": {
-                "drawStyle": "line",
-                "lineWidth": 2,
-                "fillOpacity": 8,
-                "showPoints": "never",
-                "stacking": {
-                  "mode": "none",
-                  "group": "A"
-                },
-                "axisLabel": ""
-              },
-              "thresholds": {
-                "mode": "absolute",
-                "steps": [
-                  {
-                    "color": "green",
-                    "value": null
-                  }
-                ]
-              },
-              "mappings": []
-            },
-            "overrides": []
-          }
-        },
-        {
-          "id": 20,
-          "type": "timeseries",
-          "title": "5xx per second by service",
-          "description": "Where the errors are BEING RETURNED, which is not always where they are being caused. Follow the correlation ID.",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "gridPos": {
-            "h": 7,
-            "w": 8,
-            "x": 0,
-            "y": 15
-          },
-          "targets": [
-            {
-              "datasource": {
-                "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
-              },
-              "editorMode": "code",
-              "expr": "sum by (service) (rate(axispay_http_requests_total{status=~\"5..\"}[5m]))",
-              "legendFormat": "{{service}}",
-              "range": true,
-              "instant": false,
-              "refId": "T"
-            }
-          ],
-          "options": {
-            "legend": {
-              "displayMode": "list",
-              "placement": "bottom",
-              "showLegend": true
-            },
-            "tooltip": {
-              "mode": "multi",
-              "sort": "desc"
-            }
-          },
-          "fieldConfig": {
-            "defaults": {
-              "unit": "reqps",
-              "custom": {
-                "drawStyle": "line",
-                "lineWidth": 2,
-                "fillOpacity": 8,
-                "showPoints": "never",
-                "stacking": {
-                  "mode": "none",
-                  "group": "A"
-                },
-                "axisLabel": ""
-              },
-              "thresholds": {
-                "mode": "absolute",
-                "steps": [
-                  {
-                    "color": "green",
-                    "value": null
-                  }
-                ]
-              },
-              "mappings": []
-            },
-            "overrides": []
-          }
-        },
-        {
-          "id": 22,
-          "type": "timeseries",
-          "title": "Payments by outcome",
-          "description": "captured / authorized / declined. A rising declined band with flat total volume is a risk-rule change, not an outage.",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "gridPos": {
-            "h": 7,
-            "w": 8,
-            "x": 8,
-            "y": 15
-          },
-          "targets": [
-            {
-              "datasource": {
-                "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
-              },
-              "editorMode": "code",
-              "expr": "sum by (status) (rate(axispay_payments_total[5m])) * 60",
-              "legendFormat": "{{status}}",
-              "range": true,
-              "instant": false,
-              "refId": "V"
-            }
-          ],
-          "options": {
-            "legend": {
-              "displayMode": "list",
-              "placement": "bottom",
-              "showLegend": true
-            },
-            "tooltip": {
-              "mode": "multi",
-              "sort": "desc"
-            }
-          },
-          "fieldConfig": {
-            "defaults": {
-              "unit": "short",
-              "custom": {
-                "drawStyle": "line",
-                "lineWidth": 2,
-                "fillOpacity": 20,
-                "showPoints": "never",
-                "stacking": {
-                  "mode": "normal",
-                  "group": "A"
-                },
-                "axisLabel": ""
-              },
-              "thresholds": {
-                "mode": "absolute",
-                "steps": [
-                  {
-                    "color": "green",
-                    "value": null
-                  }
-                ]
-              },
-              "mappings": []
-            },
-            "overrides": []
-          }
-        },
-        {
-          "id": 24,
-          "type": "timeseries",
-          "title": "Payments by currency",
-          "description": "ZAR dominates by volume. A currency disappearing entirely is usually an acquirer routing change.",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "gridPos": {
-            "h": 7,
-            "w": 8,
-            "x": 16,
-            "y": 15
-          },
-          "targets": [
-            {
-              "datasource": {
-                "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
-              },
-              "editorMode": "code",
-              "expr": "sum by (currency) (rate(axispay_payments_total[15m])) * 60",
-              "legendFormat": "{{currency}}",
-              "range": true,
-              "instant": false,
-              "refId": "X"
-            }
-          ],
-          "options": {
-            "legend": {
-              "displayMode": "list",
-              "placement": "bottom",
-              "showLegend": true
-            },
-            "tooltip": {
-              "mode": "multi",
-              "sort": "desc"
-            }
-          },
-          "fieldConfig": {
-            "defaults": {
-              "unit": "short",
-              "custom": {
-                "drawStyle": "line",
-                "lineWidth": 2,
-                "fillOpacity": 20,
-                "showPoints": "never",
-                "stacking": {
-                  "mode": "normal",
-                  "group": "A"
-                },
-                "axisLabel": ""
-              },
-              "thresholds": {
-                "mode": "absolute",
-                "steps": [
-                  {
-                    "color": "green",
-                    "value": null
-                  }
-                ]
-              },
-              "mappings": []
-            },
-            "overrides": []
-          }
-        },
-        {
-          "id": 25,
-          "type": "row",
-          "title": "Workload health",
-          "collapsed": false,
-          "gridPos": {
-            "h": 1,
-            "w": 24,
-            "x": 0,
-            "y": 22
-          },
-          "panels": []
-        },
-        {
-          "id": 29,
-          "type": "timeseries",
-          "title": "CPU usage against requests and limits \u2014 payment-service",
-          "description": "Three different things. The scheduler only ever looks at requests; the kernel only ever enforces limits; usage is what actually happened. HPA utilisation is measured against REQUESTS.",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "gridPos": {
-            "h": 8,
-            "w": 12,
-            "x": 0,
-            "y": 23
-          },
-          "targets": [
-            {
-              "datasource": {
-                "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
-              },
-              "editorMode": "code",
-              "expr": "sum(rate(container_cpu_usage_seconds_total{namespace=\"axispay-core\",pod=~\"payment-service-.*\",container!=\"\"}[5m]))",
-              "legendFormat": "usage",
-              "range": true,
-              "instant": false,
-              "refId": "A"
-            },
-            {
-              "datasource": {
-                "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
-              },
-              "editorMode": "code",
-              "expr": "sum(kube_pod_container_resource_requests{namespace=\"axispay-core\",pod=~\"payment-service-.*\",resource=\"cpu\"})",
-              "legendFormat": "requests (what the scheduler reserved)",
-              "range": true,
-              "instant": false,
-              "refId": "B"
-            },
-            {
-              "datasource": {
-                "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
-              },
-              "editorMode": "code",
-              "expr": "sum(kube_pod_container_resource_limits{namespace=\"axispay-core\",pod=~\"payment-service-.*\",resource=\"cpu\"})",
-              "legendFormat": "limits (where throttling starts)",
-              "range": true,
-              "instant": false,
-              "refId": "C"
-            }
-          ],
-          "options": {
-            "legend": {
-              "displayMode": "list",
-              "placement": "bottom",
-              "showLegend": true
-            },
-            "tooltip": {
-              "mode": "multi",
-              "sort": "desc"
-            }
-          },
-          "fieldConfig": {
-            "defaults": {
-              "unit": "short",
-              "custom": {
-                "drawStyle": "line",
-                "lineWidth": 2,
-                "fillOpacity": 8,
-                "showPoints": "never",
-                "stacking": {
-                  "mode": "none",
-                  "group": "A"
-                },
-                "axisLabel": ""
-              },
-              "thresholds": {
-                "mode": "absolute",
-                "steps": [
-                  {
-                    "color": "green",
-                    "value": null
-                  }
-                ]
-              },
-              "mappings": []
-            },
-            "overrides": []
-          }
-        },
-        {
-          "id": 32,
-          "type": "timeseries",
-          "title": "Memory working set against limit",
-          "description": "Memory has no throttle. Crossing the limit is an instant kill \u2014 exit 137 \u2014 not a slowdown. Watch the headroom, not the average.",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "gridPos": {
-            "h": 8,
-            "w": 12,
-            "x": 12,
-            "y": 23
-          },
-          "targets": [
-            {
-              "datasource": {
-                "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
-              },
-              "editorMode": "code",
-              "expr": "sum by (pod) (container_memory_working_set_bytes{namespace=\"axispay-core\",container!=\"\"})",
-              "legendFormat": "{{pod}}",
-              "range": true,
-              "instant": false,
-              "refId": "E"
-            },
-            {
-              "datasource": {
-                "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
-              },
-              "editorMode": "code",
-              "expr": "max(kube_pod_container_resource_limits{namespace=\"axispay-core\",resource=\"memory\"})",
-              "legendFormat": "limit",
-              "range": true,
-              "instant": false,
-              "refId": "F"
-            }
-          ],
-          "options": {
-            "legend": {
-              "displayMode": "list",
-              "placement": "bottom",
-              "showLegend": true
-            },
-            "tooltip": {
-              "mode": "multi",
-              "sort": "desc"
-            }
-          },
-          "fieldConfig": {
-            "defaults": {
-              "unit": "bytes",
-              "custom": {
-                "drawStyle": "line",
-                "lineWidth": 2,
-                "fillOpacity": 8,
-                "showPoints": "never",
-                "stacking": {
-                  "mode": "none",
-                  "group": "A"
-                },
-                "axisLabel": ""
-              },
-              "thresholds": {
-                "mode": "absolute",
-                "steps": [
-                  {
-                    "color": "green",
-                    "value": null
-                  }
-                ]
-              },
-              "mappings": []
-            },
-            "overrides": []
-          }
-        },
-        {
-          "id": 35,
-          "type": "timeseries",
-          "title": "Ready replicas against desired",
-          "description": "During a healthy rollout these track each other because maxUnavailable is 0. A persistent gap is a rollout that has stalled.",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "gridPos": {
-            "h": 7,
-            "w": 8,
-            "x": 0,
-            "y": 31
-          },
-          "targets": [
-            {
-              "datasource": {
-                "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
-              },
-              "editorMode": "code",
-              "expr": "sum by (deployment) (kube_deployment_status_replicas_ready{namespace=~\"axispay-.*\"})",
-              "legendFormat": "{{deployment}} ready",
-              "range": true,
-              "instant": false,
-              "refId": "H"
-            },
-            {
-              "datasource": {
-                "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
-              },
-              "editorMode": "code",
-              "expr": "sum by (deployment) (kube_deployment_spec_replicas{namespace=~\"axispay-.*\"})",
-              "legendFormat": "{{deployment}} desired",
-              "range": true,
-              "instant": false,
-              "refId": "I"
-            }
-          ],
-          "options": {
-            "legend": {
-              "displayMode": "list",
-              "placement": "bottom",
-              "showLegend": true
-            },
-            "tooltip": {
-              "mode": "multi",
-              "sort": "desc"
-            }
-          },
-          "fieldConfig": {
-            "defaults": {
-              "unit": "short",
-              "custom": {
-                "drawStyle": "line",
-                "lineWidth": 2,
-                "fillOpacity": 8,
-                "showPoints": "never",
-                "stacking": {
-                  "mode": "none",
-                  "group": "A"
-                },
-                "axisLabel": ""
-              },
-              "thresholds": {
-                "mode": "absolute",
-                "steps": [
-                  {
-                    "color": "green",
-                    "value": null
-                  }
-                ]
-              },
-              "mappings": []
-            },
-            "overrides": []
-          }
-        },
-        {
-          "id": 37,
-          "type": "timeseries",
-          "title": "Container restarts (15m)",
-          "description": "Rate of restarts, not the lifetime counter. One restart last week is not an incident; three in fifteen minutes is.",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "gridPos": {
-            "h": 7,
-            "w": 8,
-            "x": 8,
-            "y": 31
-          },
-          "targets": [
-            {
-              "datasource": {
-                "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
-              },
-              "editorMode": "code",
-              "expr": "sum by (pod) (increase(kube_pod_container_status_restarts_total{namespace=~\"axispay-.*\"}[15m]))",
-              "legendFormat": "{{pod}}",
-              "range": true,
-              "instant": false,
-              "refId": "K"
-            }
-          ],
-          "options": {
-            "legend": {
-              "displayMode": "list",
-              "placement": "bottom",
-              "showLegend": true
-            },
-            "tooltip": {
-              "mode": "multi",
-              "sort": "desc"
-            }
-          },
-          "fieldConfig": {
-            "defaults": {
-              "unit": "short",
-              "custom": {
-                "drawStyle": "line",
-                "lineWidth": 2,
-                "fillOpacity": 8,
-                "showPoints": "never",
-                "stacking": {
-                  "mode": "none",
-                  "group": "A"
-                },
-                "axisLabel": ""
-              },
-              "thresholds": {
-                "mode": "absolute",
-                "steps": [
-                  {
-                    "color": "green",
-                    "value": null
-                  }
-                ]
-              },
-              "mappings": []
-            },
-            "overrides": []
-          }
-        },
-        {
-          "id": 40,
-          "type": "timeseries",
-          "title": "HPA replicas \u2014 current against maximum",
-          "description": "Current touching max means autoscaling has run out of room. Not yet an outage \u2014 which is exactly why it is worth watching.",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "gridPos": {
-            "h": 7,
-            "w": 8,
-            "x": 16,
-            "y": 31
-          },
-          "targets": [
-            {
-              "datasource": {
-                "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
-              },
-              "editorMode": "code",
-              "expr": "kube_horizontalpodautoscaler_status_current_replicas{namespace=~\"axispay-.*\"}",
-              "legendFormat": "{{horizontalpodautoscaler}} current",
-              "range": true,
-              "instant": false,
-              "refId": "M"
-            },
-            {
-              "datasource": {
-                "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
-              },
-              "editorMode": "code",
-              "expr": "kube_horizontalpodautoscaler_spec_max_replicas{namespace=~\"axispay-.*\"}",
-              "legendFormat": "{{horizontalpodautoscaler}} max",
-              "range": true,
-              "instant": false,
-              "refId": "N"
-            }
-          ],
-          "options": {
-            "legend": {
-              "displayMode": "list",
-              "placement": "bottom",
-              "showLegend": true
-            },
-            "tooltip": {
-              "mode": "multi",
-              "sort": "desc"
-            }
-          },
-          "fieldConfig": {
-            "defaults": {
-              "unit": "short",
-              "custom": {
-                "drawStyle": "line",
-                "lineWidth": 2,
-                "fillOpacity": 8,
-                "showPoints": "never",
-                "stacking": {
-                  "mode": "none",
-                  "group": "A"
-                },
-                "axisLabel": ""
-              },
-              "thresholds": {
-                "mode": "absolute",
-                "steps": [
-                  {
-                    "color": "green",
-                    "value": null
-                  }
-                ]
-              },
-              "mappings": []
-            },
-            "overrides": []
-          }
-        },
-        {
-          "id": 41,
-          "type": "row",
-          "title": "Logs \u2014 errors across the platform",
-          "collapsed": false,
-          "gridPos": {
-            "h": 1,
-            "w": 24,
-            "x": 0,
-            "y": 38
-          },
-          "panels": []
-        },
-        {
-          "id": 42,
-          "type": "logs",
-          "title": "Errors, all AxisPay namespaces",
-          "description": "Structured JSON on stdout is what makes this query possible. Paste a correlation_id into the query to follow one payment across all seven services it touched:  {namespace=~\"axispay-.*\"} | json | correlation_id=\"...\"",
-          "datasource": {
-            "type": "loki",
-            "uid": "${DS_LOKI}"
-          },
-          "gridPos": {
-            "h": 10,
-            "w": 24,
-            "x": 0,
-            "y": 39
-          },
-          "targets": [
-            {
-              "datasource": {
-                "type": "loki",
-                "uid": "${DS_LOKI}"
-              },
-              "expr": "{namespace=~\"axispay-.*\"} | json | level=\"error\"",
-              "queryType": "range",
-              "refId": "A"
-            }
-          ],
-          "options": {
-            "showTime": true,
-            "sortOrder": "Descending",
-            "wrapLogMessage": true,
-            "prettifyLogMessage": true,
-            "enableLogDetails": true
-          }
-        }
-      ]
-    }
+  axispay-platform.json: "{\n  \"uid\": \"axispay-platform\",\n  \"title\": \"AxisPay\
+    \ \\u2014 Payment Platform\",\n  \"description\": \"Golden signals, business outcomes\
+    \ and workload health for the AxisPay payment platform. Fictional data; training\
+    \ use only.\",\n  \"tags\": [\n    \"axispay\",\n    \"payments\",\n    \"slo\"\
+    \n  ],\n  \"timezone\": \"browser\",\n  \"schemaVersion\": 39,\n  \"version\"\
+    : 1,\n  \"refresh\": \"30s\",\n  \"editable\": true,\n  \"graphTooltip\": 1,\n\
+    \  \"time\": {\n    \"from\": \"now-1h\",\n    \"to\": \"now\"\n  },\n  \"templating\"\
+    : {\n    \"list\": [\n      {\n        \"name\": \"DS_PROMETHEUS\",\n        \"\
+    type\": \"datasource\",\n        \"query\": \"prometheus\",\n        \"current\"\
+    : {\n          \"text\": \"Prometheus\",\n          \"value\": \"Prometheus\"\n\
+    \        },\n        \"hide\": 0\n      },\n      {\n        \"name\": \"DS_LOKI\"\
+    ,\n        \"type\": \"datasource\",\n        \"query\": \"loki\",\n        \"\
+    current\": {\n          \"text\": \"Loki\",\n          \"value\": \"Loki\"\n \
+    \       },\n        \"hide\": 0\n      },\n      {\n        \"name\": \"namespace\"\
+    ,\n        \"type\": \"query\",\n        \"datasource\": {\n          \"type\"\
+    : \"prometheus\",\n          \"uid\": \"${DS_PROMETHEUS}\"\n        },\n     \
+    \   \"query\": \"label_values(kube_namespace_created{namespace=~\\\"axispay-.*\\\
+    \"}, namespace)\",\n        \"refresh\": 1,\n        \"includeAll\": true,\n \
+    \       \"multi\": true,\n        \"current\": {\n          \"text\": \"All\"\
+    ,\n          \"value\": \"$__all\"\n        }\n      }\n    ]\n  },\n  \"annotations\"\
+    : {\n    \"list\": [\n      {\n        \"name\": \"Deployments\",\n        \"\
+    datasource\": {\n          \"type\": \"prometheus\",\n          \"uid\": \"${DS_PROMETHEUS}\"\
+    \n        },\n        \"enable\": true,\n        \"iconColor\": \"rgba(0, 211,\
+    \ 255, 1)\",\n        \"expr\": \"changes(kube_deployment_status_observed_generation{namespace=~\\\
+    \"axispay-.*\\\"}[1m]) > 0\",\n        \"titleFormat\": \"rollout: {{deployment}}\"\
+    \n      }\n    ]\n  },\n  \"panels\": [\n    {\n      \"id\": 1,\n      \"type\"\
+    : \"row\",\n      \"title\": \"Service level \\u2014 what the merchant experiences\"\
+    ,\n      \"collapsed\": false,\n      \"gridPos\": {\n        \"h\": 1,\n    \
+    \    \"w\": 24,\n        \"x\": 0,\n        \"y\": 0\n      },\n      \"panels\"\
+    : []\n    },\n    {\n      \"id\": 2,\n      \"type\": \"stat\",\n      \"title\"\
+    : \"Payment success rate\",\n      \"description\": \"Captured or authorized,\
+    \ over all outcomes. Declines are a correct outcome, not an error \\u2014 this\
+    \ panel deliberately does not treat them as failures.\",\n      \"datasource\"\
+    : {\n        \"type\": \"prometheus\",\n        \"uid\": \"${DS_PROMETHEUS}\"\n\
+    \      },\n      \"gridPos\": {\n        \"h\": 5,\n        \"w\": 5,\n      \
+    \  \"x\": 0,\n        \"y\": 1\n      },\n      \"targets\": [\n        {\n  \
+    \        \"datasource\": {\n            \"type\": \"prometheus\",\n          \
+    \  \"uid\": \"${DS_PROMETHEUS}\"\n          },\n          \"editorMode\": \"code\"\
+    ,\n          \"expr\": \"sum(rate(axispay_payments_total{status=~\\\"captured|authorized\\\
+    \"}[5m])) / clamp_min(sum(rate(axispay_payments_total[5m])), 0.0001)\",\n    \
+    \      \"legendFormat\": \"\",\n          \"range\": false,\n          \"instant\"\
+    : true,\n          \"refId\": \"D\"\n        }\n      ],\n      \"options\": {\n\
+    \        \"colorMode\": \"background\",\n        \"graphMode\": \"area\",\n  \
+    \      \"textMode\": \"auto\",\n        \"reduceOptions\": {\n          \"calcs\"\
+    : [\n            \"lastNotNull\"\n          ],\n          \"fields\": \"\",\n\
+    \          \"values\": false\n        }\n      },\n      \"fieldConfig\": {\n\
+    \        \"defaults\": {\n          \"unit\": \"percentunit\",\n          \"decimals\"\
+    : 2,\n          \"thresholds\": {\n            \"mode\": \"absolute\",\n     \
+    \       \"steps\": [\n              {\n                \"color\": \"red\",\n \
+    \               \"value\": null\n              },\n              {\n         \
+    \       \"color\": \"orange\",\n                \"value\": 0.9\n             \
+    \ },\n              {\n                \"color\": \"green\",\n               \
+    \ \"value\": 0.97\n              }\n            ]\n          },\n          \"\
+    mappings\": []\n        },\n        \"overrides\": []\n      }\n    },\n    {\n\
+    \      \"id\": 4,\n      \"type\": \"stat\",\n      \"title\": \"p99 latency \\\
+    u2014 payment API\",\n      \"description\": \"SLO is 300ms. The histogram buckets\
+    \ are placed around that threshold so the estimate is accurate exactly where it\
+    \ matters.\",\n      \"datasource\": {\n        \"type\": \"prometheus\",\n  \
+    \      \"uid\": \"${DS_PROMETHEUS}\"\n      },\n      \"gridPos\": {\n       \
+    \ \"h\": 5,\n        \"w\": 5,\n        \"x\": 5,\n        \"y\": 1\n      },\n\
+    \      \"targets\": [\n        {\n          \"datasource\": {\n            \"\
+    type\": \"prometheus\",\n            \"uid\": \"${DS_PROMETHEUS}\"\n         \
+    \ },\n          \"editorMode\": \"code\",\n          \"expr\": \"histogram_quantile(0.99,\
+    \ sum by (le) (rate(axispay_http_request_duration_seconds_bucket{service=\\\"\
+    payment-service\\\"}[5m])))\",\n          \"legendFormat\": \"\",\n          \"\
+    range\": false,\n          \"instant\": true,\n          \"refId\": \"F\"\n  \
+    \      }\n      ],\n      \"options\": {\n        \"colorMode\": \"background\"\
+    ,\n        \"graphMode\": \"area\",\n        \"textMode\": \"auto\",\n       \
+    \ \"reduceOptions\": {\n          \"calcs\": [\n            \"lastNotNull\"\n\
+    \          ],\n          \"fields\": \"\",\n          \"values\": false\n    \
+    \    }\n      },\n      \"fieldConfig\": {\n        \"defaults\": {\n        \
+    \  \"unit\": \"s\",\n          \"decimals\": 3,\n          \"thresholds\": {\n\
+    \            \"mode\": \"absolute\",\n            \"steps\": [\n             \
+    \ {\n                \"color\": \"green\",\n                \"value\": null\n\
+    \              },\n              {\n                \"color\": \"orange\",\n \
+    \               \"value\": 0.25\n              },\n              {\n         \
+    \       \"color\": \"red\",\n                \"value\": 0.3\n              }\n\
+    \            ]\n          },\n          \"mappings\": []\n        },\n       \
+    \ \"overrides\": []\n      }\n    },\n    {\n      \"id\": 6,\n      \"type\"\
+    : \"stat\",\n      \"title\": \"5xx rate \\u2014 all services\",\n      \"description\"\
+    : \"The error budget is 0.5%. Above the red line the SLO is burning.\",\n    \
+    \  \"datasource\": {\n        \"type\": \"prometheus\",\n        \"uid\": \"${DS_PROMETHEUS}\"\
+    \n      },\n      \"gridPos\": {\n        \"h\": 5,\n        \"w\": 5,\n     \
+    \   \"x\": 10,\n        \"y\": 1\n      },\n      \"targets\": [\n        {\n\
+    \          \"datasource\": {\n            \"type\": \"prometheus\",\n        \
+    \    \"uid\": \"${DS_PROMETHEUS}\"\n          },\n          \"editorMode\": \"\
+    code\",\n          \"expr\": \"sum(rate(axispay_http_requests_total{status=~\\\
+    \"5..\\\"}[5m])) / clamp_min(sum(rate(axispay_http_requests_total[5m])), 0.0001)\"\
+    ,\n          \"legendFormat\": \"\",\n          \"range\": false,\n          \"\
+    instant\": true,\n          \"refId\": \"H\"\n        }\n      ],\n      \"options\"\
+    : {\n        \"colorMode\": \"background\",\n        \"graphMode\": \"area\",\n\
+    \        \"textMode\": \"auto\",\n        \"reduceOptions\": {\n          \"calcs\"\
+    : [\n            \"lastNotNull\"\n          ],\n          \"fields\": \"\",\n\
+    \          \"values\": false\n        }\n      },\n      \"fieldConfig\": {\n\
+    \        \"defaults\": {\n          \"unit\": \"percentunit\",\n          \"decimals\"\
+    : 4,\n          \"thresholds\": {\n            \"mode\": \"absolute\",\n     \
+    \       \"steps\": [\n              {\n                \"color\": \"green\",\n\
+    \                \"value\": null\n              },\n              {\n        \
+    \        \"color\": \"orange\",\n                \"value\": 0.002\n          \
+    \    },\n              {\n                \"color\": \"red\",\n              \
+    \  \"value\": 0.005\n              }\n            ]\n          },\n          \"\
+    mappings\": []\n        },\n        \"overrides\": []\n      }\n    },\n    {\n\
+    \      \"id\": 8,\n      \"type\": \"stat\",\n      \"title\": \"Payments per\
+    \ minute\",\n      \"description\": \"Zero here with everything else green is\
+    \ the failure mode that infrastructure alerts cannot see.\",\n      \"datasource\"\
+    : {\n        \"type\": \"prometheus\",\n        \"uid\": \"${DS_PROMETHEUS}\"\n\
+    \      },\n      \"gridPos\": {\n        \"h\": 5,\n        \"w\": 4,\n      \
+    \  \"x\": 15,\n        \"y\": 1\n      },\n      \"targets\": [\n        {\n \
+    \         \"datasource\": {\n            \"type\": \"prometheus\",\n         \
+    \   \"uid\": \"${DS_PROMETHEUS}\"\n          },\n          \"editorMode\": \"\
+    code\",\n          \"expr\": \"sum(rate(axispay_payments_total[5m])) * 60\",\n\
+    \          \"legendFormat\": \"\",\n          \"range\": false,\n          \"\
+    instant\": true,\n          \"refId\": \"J\"\n        }\n      ],\n      \"options\"\
+    : {\n        \"colorMode\": \"background\",\n        \"graphMode\": \"area\",\n\
+    \        \"textMode\": \"auto\",\n        \"reduceOptions\": {\n          \"calcs\"\
+    : [\n            \"lastNotNull\"\n          ],\n          \"fields\": \"\",\n\
+    \          \"values\": false\n        }\n      },\n      \"fieldConfig\": {\n\
+    \        \"defaults\": {\n          \"unit\": \"short\",\n          \"decimals\"\
+    : 1,\n          \"thresholds\": {\n            \"mode\": \"absolute\",\n     \
+    \       \"steps\": [\n              {\n                \"color\": \"red\",\n \
+    \               \"value\": null\n              },\n              {\n         \
+    \       \"color\": \"green\",\n                \"value\": 0.1\n              }\n\
+    \            ]\n          },\n          \"mappings\": []\n        },\n       \
+    \ \"overrides\": []\n      }\n    },\n    {\n      \"id\": 10,\n      \"type\"\
+    : \"stat\",\n      \"title\": \"Pods ready\",\n      \"description\": \"Ready,\
+    \ not running. A Running pod failing readiness serves nothing.\",\n      \"datasource\"\
+    : {\n        \"type\": \"prometheus\",\n        \"uid\": \"${DS_PROMETHEUS}\"\n\
+    \      },\n      \"gridPos\": {\n        \"h\": 5,\n        \"w\": 5,\n      \
+    \  \"x\": 19,\n        \"y\": 1\n      },\n      \"targets\": [\n        {\n \
+    \         \"datasource\": {\n            \"type\": \"prometheus\",\n         \
+    \   \"uid\": \"${DS_PROMETHEUS}\"\n          },\n          \"editorMode\": \"\
+    code\",\n          \"expr\": \"sum(kube_deployment_status_replicas_ready{namespace=~\\\
+    \"axispay-.*\\\"})\",\n          \"legendFormat\": \"\",\n          \"range\"\
+    : false,\n          \"instant\": true,\n          \"refId\": \"L\"\n        }\n\
+    \      ],\n      \"options\": {\n        \"colorMode\": \"background\",\n    \
+    \    \"graphMode\": \"area\",\n        \"textMode\": \"auto\",\n        \"reduceOptions\"\
+    : {\n          \"calcs\": [\n            \"lastNotNull\"\n          ],\n     \
+    \     \"fields\": \"\",\n          \"values\": false\n        }\n      },\n  \
+    \    \"fieldConfig\": {\n        \"defaults\": {\n          \"unit\": \"short\"\
+    ,\n          \"decimals\": 0,\n          \"thresholds\": {\n            \"mode\"\
+    : \"absolute\",\n            \"steps\": [\n              {\n                \"\
+    color\": \"red\",\n                \"value\": null\n              },\n       \
+    \       {\n                \"color\": \"green\",\n                \"value\": 1\n\
+    \              }\n            ]\n          },\n          \"mappings\": []\n  \
+    \      },\n        \"overrides\": []\n      }\n    },\n    {\n      \"id\": 12,\n\
+    \      \"type\": \"row\",\n      \"title\": \"Traffic and latency\",\n      \"\
+    collapsed\": false,\n      \"gridPos\": {\n        \"h\": 1,\n        \"w\": 24,\n\
+    \        \"x\": 0,\n        \"y\": 6\n      },\n      \"panels\": []\n    },\n\
+    \    {\n      \"id\": 14,\n      \"type\": \"timeseries\",\n      \"title\": \"\
+    Requests per second by service\",\n      \"description\": \"Probe endpoints are\
+    \ excluded at the application, so this is real traffic \\u2014 not the kubelet\
+    \ checking on you every five seconds.\",\n      \"datasource\": {\n        \"\
+    type\": \"prometheus\",\n        \"uid\": \"${DS_PROMETHEUS}\"\n      },\n   \
+    \   \"gridPos\": {\n        \"h\": 8,\n        \"w\": 12,\n        \"x\": 0,\n\
+    \        \"y\": 7\n      },\n      \"targets\": [\n        {\n          \"datasource\"\
+    : {\n            \"type\": \"prometheus\",\n            \"uid\": \"${DS_PROMETHEUS}\"\
+    \n          },\n          \"editorMode\": \"code\",\n          \"expr\": \"sum\
+    \ by (service) (rate(axispay_http_requests_total[5m]))\",\n          \"legendFormat\"\
+    : \"{{service}}\",\n          \"range\": true,\n          \"instant\": false,\n\
+    \          \"refId\": \"N\"\n        }\n      ],\n      \"options\": {\n     \
+    \   \"legend\": {\n          \"displayMode\": \"list\",\n          \"placement\"\
+    : \"bottom\",\n          \"showLegend\": true\n        },\n        \"tooltip\"\
+    : {\n          \"mode\": \"multi\",\n          \"sort\": \"desc\"\n        }\n\
+    \      },\n      \"fieldConfig\": {\n        \"defaults\": {\n          \"unit\"\
+    : \"reqps\",\n          \"custom\": {\n            \"drawStyle\": \"line\",\n\
+    \            \"lineWidth\": 2,\n            \"fillOpacity\": 8,\n            \"\
+    showPoints\": \"never\",\n            \"stacking\": {\n              \"mode\"\
+    : \"none\",\n              \"group\": \"A\"\n            },\n            \"axisLabel\"\
+    : \"\"\n          },\n          \"thresholds\": {\n            \"mode\": \"absolute\"\
+    ,\n            \"steps\": [\n              {\n                \"color\": \"green\"\
+    ,\n                \"value\": null\n              }\n            ]\n         \
+    \ },\n          \"mappings\": []\n        },\n        \"overrides\": []\n    \
+    \  }\n    },\n    {\n      \"id\": 18,\n      \"type\": \"timeseries\",\n    \
+    \  \"title\": \"payment-service latency percentiles\",\n      \"description\"\
+    : \"Watch the GAP between p50 and p99. A wide gap means a slow minority \\u2014\
+    \ usually one bad replica or one slow downstream \\u2014 and the average will\
+    \ not show it.\",\n      \"datasource\": {\n        \"type\": \"prometheus\",\n\
+    \        \"uid\": \"${DS_PROMETHEUS}\"\n      },\n      \"gridPos\": {\n     \
+    \   \"h\": 8,\n        \"w\": 12,\n        \"x\": 12,\n        \"y\": 7\n    \
+    \  },\n      \"targets\": [\n        {\n          \"datasource\": {\n        \
+    \    \"type\": \"prometheus\",\n            \"uid\": \"${DS_PROMETHEUS}\"\n  \
+    \        },\n          \"editorMode\": \"code\",\n          \"expr\": \"histogram_quantile(0.50,\
+    \ sum by (le) (rate(axispay_http_request_duration_seconds_bucket{service=\\\"\
+    payment-service\\\"}[5m])))\",\n          \"legendFormat\": \"p50\",\n       \
+    \   \"range\": true,\n          \"instant\": false,\n          \"refId\": \"P\"\
+    \n        },\n        {\n          \"datasource\": {\n            \"type\": \"\
+    prometheus\",\n            \"uid\": \"${DS_PROMETHEUS}\"\n          },\n     \
+    \     \"editorMode\": \"code\",\n          \"expr\": \"histogram_quantile(0.95,\
+    \ sum by (le) (rate(axispay_http_request_duration_seconds_bucket{service=\\\"\
+    payment-service\\\"}[5m])))\",\n          \"legendFormat\": \"p95\",\n       \
+    \   \"range\": true,\n          \"instant\": false,\n          \"refId\": \"Q\"\
+    \n        },\n        {\n          \"datasource\": {\n            \"type\": \"\
+    prometheus\",\n            \"uid\": \"${DS_PROMETHEUS}\"\n          },\n     \
+    \     \"editorMode\": \"code\",\n          \"expr\": \"histogram_quantile(0.99,\
+    \ sum by (le) (rate(axispay_http_request_duration_seconds_bucket{service=\\\"\
+    payment-service\\\"}[5m])))\",\n          \"legendFormat\": \"p99\",\n       \
+    \   \"range\": true,\n          \"instant\": false,\n          \"refId\": \"R\"\
+    \n        }\n      ],\n      \"options\": {\n        \"legend\": {\n         \
+    \ \"displayMode\": \"list\",\n          \"placement\": \"bottom\",\n         \
+    \ \"showLegend\": true\n        },\n        \"tooltip\": {\n          \"mode\"\
+    : \"multi\",\n          \"sort\": \"desc\"\n        }\n      },\n      \"fieldConfig\"\
+    : {\n        \"defaults\": {\n          \"unit\": \"s\",\n          \"custom\"\
+    : {\n            \"drawStyle\": \"line\",\n            \"lineWidth\": 2,\n   \
+    \         \"fillOpacity\": 8,\n            \"showPoints\": \"never\",\n      \
+    \      \"stacking\": {\n              \"mode\": \"none\",\n              \"group\"\
+    : \"A\"\n            },\n            \"axisLabel\": \"\"\n          },\n     \
+    \     \"thresholds\": {\n            \"mode\": \"absolute\",\n            \"steps\"\
+    : [\n              {\n                \"color\": \"green\",\n                \"\
+    value\": null\n              }\n            ]\n          },\n          \"mappings\"\
+    : []\n        },\n        \"overrides\": []\n      }\n    },\n    {\n      \"\
+    id\": 20,\n      \"type\": \"timeseries\",\n      \"title\": \"5xx per second\
+    \ by service\",\n      \"description\": \"Where the errors are BEING RETURNED,\
+    \ which is not always where they are being caused. Follow the correlation ID.\"\
+    ,\n      \"datasource\": {\n        \"type\": \"prometheus\",\n        \"uid\"\
+    : \"${DS_PROMETHEUS}\"\n      },\n      \"gridPos\": {\n        \"h\": 7,\n  \
+    \      \"w\": 8,\n        \"x\": 0,\n        \"y\": 15\n      },\n      \"targets\"\
+    : [\n        {\n          \"datasource\": {\n            \"type\": \"prometheus\"\
+    ,\n            \"uid\": \"${DS_PROMETHEUS}\"\n          },\n          \"editorMode\"\
+    : \"code\",\n          \"expr\": \"sum by (service) (rate(axispay_http_requests_total{status=~\\\
+    \"5..\\\"}[5m]))\",\n          \"legendFormat\": \"{{service}}\",\n          \"\
+    range\": true,\n          \"instant\": false,\n          \"refId\": \"T\"\n  \
+    \      }\n      ],\n      \"options\": {\n        \"legend\": {\n          \"\
+    displayMode\": \"list\",\n          \"placement\": \"bottom\",\n          \"showLegend\"\
+    : true\n        },\n        \"tooltip\": {\n          \"mode\": \"multi\",\n \
+    \         \"sort\": \"desc\"\n        }\n      },\n      \"fieldConfig\": {\n\
+    \        \"defaults\": {\n          \"unit\": \"reqps\",\n          \"custom\"\
+    : {\n            \"drawStyle\": \"line\",\n            \"lineWidth\": 2,\n   \
+    \         \"fillOpacity\": 8,\n            \"showPoints\": \"never\",\n      \
+    \      \"stacking\": {\n              \"mode\": \"none\",\n              \"group\"\
+    : \"A\"\n            },\n            \"axisLabel\": \"\"\n          },\n     \
+    \     \"thresholds\": {\n            \"mode\": \"absolute\",\n            \"steps\"\
+    : [\n              {\n                \"color\": \"green\",\n                \"\
+    value\": null\n              }\n            ]\n          },\n          \"mappings\"\
+    : []\n        },\n        \"overrides\": []\n      }\n    },\n    {\n      \"\
+    id\": 22,\n      \"type\": \"timeseries\",\n      \"title\": \"Payments by outcome\"\
+    ,\n      \"description\": \"captured / authorized / declined. A rising declined\
+    \ band with flat total volume is a risk-rule change, not an outage.\",\n     \
+    \ \"datasource\": {\n        \"type\": \"prometheus\",\n        \"uid\": \"${DS_PROMETHEUS}\"\
+    \n      },\n      \"gridPos\": {\n        \"h\": 7,\n        \"w\": 8,\n     \
+    \   \"x\": 8,\n        \"y\": 15\n      },\n      \"targets\": [\n        {\n\
+    \          \"datasource\": {\n            \"type\": \"prometheus\",\n        \
+    \    \"uid\": \"${DS_PROMETHEUS}\"\n          },\n          \"editorMode\": \"\
+    code\",\n          \"expr\": \"sum by (status) (rate(axispay_payments_total[5m]))\
+    \ * 60\",\n          \"legendFormat\": \"{{status}}\",\n          \"range\": true,\n\
+    \          \"instant\": false,\n          \"refId\": \"V\"\n        }\n      ],\n\
+    \      \"options\": {\n        \"legend\": {\n          \"displayMode\": \"list\"\
+    ,\n          \"placement\": \"bottom\",\n          \"showLegend\": true\n    \
+    \    },\n        \"tooltip\": {\n          \"mode\": \"multi\",\n          \"\
+    sort\": \"desc\"\n        }\n      },\n      \"fieldConfig\": {\n        \"defaults\"\
+    : {\n          \"unit\": \"short\",\n          \"custom\": {\n            \"drawStyle\"\
+    : \"line\",\n            \"lineWidth\": 2,\n            \"fillOpacity\": 20,\n\
+    \            \"showPoints\": \"never\",\n            \"stacking\": {\n       \
+    \       \"mode\": \"normal\",\n              \"group\": \"A\"\n            },\n\
+    \            \"axisLabel\": \"\"\n          },\n          \"thresholds\": {\n\
+    \            \"mode\": \"absolute\",\n            \"steps\": [\n             \
+    \ {\n                \"color\": \"green\",\n                \"value\": null\n\
+    \              }\n            ]\n          },\n          \"mappings\": []\n  \
+    \      },\n        \"overrides\": []\n      }\n    },\n    {\n      \"id\": 24,\n\
+    \      \"type\": \"timeseries\",\n      \"title\": \"Payments by currency\",\n\
+    \      \"description\": \"ZAR dominates by volume. A currency disappearing entirely\
+    \ is usually an acquirer routing change.\",\n      \"datasource\": {\n       \
+    \ \"type\": \"prometheus\",\n        \"uid\": \"${DS_PROMETHEUS}\"\n      },\n\
+    \      \"gridPos\": {\n        \"h\": 7,\n        \"w\": 8,\n        \"x\": 16,\n\
+    \        \"y\": 15\n      },\n      \"targets\": [\n        {\n          \"datasource\"\
+    : {\n            \"type\": \"prometheus\",\n            \"uid\": \"${DS_PROMETHEUS}\"\
+    \n          },\n          \"editorMode\": \"code\",\n          \"expr\": \"sum\
+    \ by (currency) (rate(axispay_payments_total[15m])) * 60\",\n          \"legendFormat\"\
+    : \"{{currency}}\",\n          \"range\": true,\n          \"instant\": false,\n\
+    \          \"refId\": \"X\"\n        }\n      ],\n      \"options\": {\n     \
+    \   \"legend\": {\n          \"displayMode\": \"list\",\n          \"placement\"\
+    : \"bottom\",\n          \"showLegend\": true\n        },\n        \"tooltip\"\
+    : {\n          \"mode\": \"multi\",\n          \"sort\": \"desc\"\n        }\n\
+    \      },\n      \"fieldConfig\": {\n        \"defaults\": {\n          \"unit\"\
+    : \"short\",\n          \"custom\": {\n            \"drawStyle\": \"line\",\n\
+    \            \"lineWidth\": 2,\n            \"fillOpacity\": 20,\n           \
+    \ \"showPoints\": \"never\",\n            \"stacking\": {\n              \"mode\"\
+    : \"normal\",\n              \"group\": \"A\"\n            },\n            \"\
+    axisLabel\": \"\"\n          },\n          \"thresholds\": {\n            \"mode\"\
+    : \"absolute\",\n            \"steps\": [\n              {\n                \"\
+    color\": \"green\",\n                \"value\": null\n              }\n      \
+    \      ]\n          },\n          \"mappings\": []\n        },\n        \"overrides\"\
+    : []\n      }\n    },\n    {\n      \"id\": 25,\n      \"type\": \"row\",\n  \
+    \    \"title\": \"Workload health\",\n      \"collapsed\": false,\n      \"gridPos\"\
+    : {\n        \"h\": 1,\n        \"w\": 24,\n        \"x\": 0,\n        \"y\":\
+    \ 22\n      },\n      \"panels\": []\n    },\n    {\n      \"id\": 29,\n     \
+    \ \"type\": \"timeseries\",\n      \"title\": \"CPU usage against requests and\
+    \ limits \\u2014 payment-service\",\n      \"description\": \"Three different\
+    \ things. The scheduler only ever looks at requests; the kernel only ever enforces\
+    \ limits; usage is what actually happened. HPA utilisation is measured against\
+    \ REQUESTS.\",\n      \"datasource\": {\n        \"type\": \"prometheus\",\n \
+    \       \"uid\": \"${DS_PROMETHEUS}\"\n      },\n      \"gridPos\": {\n      \
+    \  \"h\": 8,\n        \"w\": 12,\n        \"x\": 0,\n        \"y\": 23\n     \
+    \ },\n      \"targets\": [\n        {\n          \"datasource\": {\n         \
+    \   \"type\": \"prometheus\",\n            \"uid\": \"${DS_PROMETHEUS}\"\n   \
+    \       },\n          \"editorMode\": \"code\",\n          \"expr\": \"sum(rate(container_cpu_usage_seconds_total{namespace=\\\
+    \"axispay-core\\\",pod=~\\\"payment-service-.*\\\",container!=\\\"\\\"}[5m]))\"\
+    ,\n          \"legendFormat\": \"usage\",\n          \"range\": true,\n      \
+    \    \"instant\": false,\n          \"refId\": \"A\"\n        },\n        {\n\
+    \          \"datasource\": {\n            \"type\": \"prometheus\",\n        \
+    \    \"uid\": \"${DS_PROMETHEUS}\"\n          },\n          \"editorMode\": \"\
+    code\",\n          \"expr\": \"sum(kube_pod_container_resource_requests{namespace=\\\
+    \"axispay-core\\\",pod=~\\\"payment-service-.*\\\",resource=\\\"cpu\\\"})\",\n\
+    \          \"legendFormat\": \"requests (what the scheduler reserved)\",\n   \
+    \       \"range\": true,\n          \"instant\": false,\n          \"refId\":\
+    \ \"B\"\n        },\n        {\n          \"datasource\": {\n            \"type\"\
+    : \"prometheus\",\n            \"uid\": \"${DS_PROMETHEUS}\"\n          },\n \
+    \         \"editorMode\": \"code\",\n          \"expr\": \"sum(kube_pod_container_resource_limits{namespace=\\\
+    \"axispay-core\\\",pod=~\\\"payment-service-.*\\\",resource=\\\"cpu\\\"})\",\n\
+    \          \"legendFormat\": \"limits (where throttling starts)\",\n         \
+    \ \"range\": true,\n          \"instant\": false,\n          \"refId\": \"C\"\n\
+    \        }\n      ],\n      \"options\": {\n        \"legend\": {\n          \"\
+    displayMode\": \"list\",\n          \"placement\": \"bottom\",\n          \"showLegend\"\
+    : true\n        },\n        \"tooltip\": {\n          \"mode\": \"multi\",\n \
+    \         \"sort\": \"desc\"\n        }\n      },\n      \"fieldConfig\": {\n\
+    \        \"defaults\": {\n          \"unit\": \"short\",\n          \"custom\"\
+    : {\n            \"drawStyle\": \"line\",\n            \"lineWidth\": 2,\n   \
+    \         \"fillOpacity\": 8,\n            \"showPoints\": \"never\",\n      \
+    \      \"stacking\": {\n              \"mode\": \"none\",\n              \"group\"\
+    : \"A\"\n            },\n            \"axisLabel\": \"\"\n          },\n     \
+    \     \"thresholds\": {\n            \"mode\": \"absolute\",\n            \"steps\"\
+    : [\n              {\n                \"color\": \"green\",\n                \"\
+    value\": null\n              }\n            ]\n          },\n          \"mappings\"\
+    : []\n        },\n        \"overrides\": []\n      }\n    },\n    {\n      \"\
+    id\": 32,\n      \"type\": \"timeseries\",\n      \"title\": \"Memory working\
+    \ set against limit\",\n      \"description\": \"Memory has no throttle. Crossing\
+    \ the limit is an instant kill \\u2014 exit 137 \\u2014 not a slowdown. Watch\
+    \ the headroom, not the average.\",\n      \"datasource\": {\n        \"type\"\
+    : \"prometheus\",\n        \"uid\": \"${DS_PROMETHEUS}\"\n      },\n      \"gridPos\"\
+    : {\n        \"h\": 8,\n        \"w\": 12,\n        \"x\": 12,\n        \"y\"\
+    : 23\n      },\n      \"targets\": [\n        {\n          \"datasource\": {\n\
+    \            \"type\": \"prometheus\",\n            \"uid\": \"${DS_PROMETHEUS}\"\
+    \n          },\n          \"editorMode\": \"code\",\n          \"expr\": \"sum\
+    \ by (pod) (container_memory_working_set_bytes{namespace=\\\"axispay-core\\\"\
+    ,container!=\\\"\\\"})\",\n          \"legendFormat\": \"{{pod}}\",\n        \
+    \  \"range\": true,\n          \"instant\": false,\n          \"refId\": \"E\"\
+    \n        },\n        {\n          \"datasource\": {\n            \"type\": \"\
+    prometheus\",\n            \"uid\": \"${DS_PROMETHEUS}\"\n          },\n     \
+    \     \"editorMode\": \"code\",\n          \"expr\": \"max(kube_pod_container_resource_limits{namespace=\\\
+    \"axispay-core\\\",resource=\\\"memory\\\"})\",\n          \"legendFormat\": \"\
+    limit\",\n          \"range\": true,\n          \"instant\": false,\n        \
+    \  \"refId\": \"F\"\n        }\n      ],\n      \"options\": {\n        \"legend\"\
+    : {\n          \"displayMode\": \"list\",\n          \"placement\": \"bottom\"\
+    ,\n          \"showLegend\": true\n        },\n        \"tooltip\": {\n      \
+    \    \"mode\": \"multi\",\n          \"sort\": \"desc\"\n        }\n      },\n\
+    \      \"fieldConfig\": {\n        \"defaults\": {\n          \"unit\": \"bytes\"\
+    ,\n          \"custom\": {\n            \"drawStyle\": \"line\",\n           \
+    \ \"lineWidth\": 2,\n            \"fillOpacity\": 8,\n            \"showPoints\"\
+    : \"never\",\n            \"stacking\": {\n              \"mode\": \"none\",\n\
+    \              \"group\": \"A\"\n            },\n            \"axisLabel\": \"\
+    \"\n          },\n          \"thresholds\": {\n            \"mode\": \"absolute\"\
+    ,\n            \"steps\": [\n              {\n                \"color\": \"green\"\
+    ,\n                \"value\": null\n              }\n            ]\n         \
+    \ },\n          \"mappings\": []\n        },\n        \"overrides\": []\n    \
+    \  }\n    },\n    {\n      \"id\": 35,\n      \"type\": \"timeseries\",\n    \
+    \  \"title\": \"Ready replicas against desired\",\n      \"description\": \"During\
+    \ a healthy rollout these track each other because maxUnavailable is 0. A persistent\
+    \ gap is a rollout that has stalled.\",\n      \"datasource\": {\n        \"type\"\
+    : \"prometheus\",\n        \"uid\": \"${DS_PROMETHEUS}\"\n      },\n      \"gridPos\"\
+    : {\n        \"h\": 7,\n        \"w\": 8,\n        \"x\": 0,\n        \"y\": 31\n\
+    \      },\n      \"targets\": [\n        {\n          \"datasource\": {\n    \
+    \        \"type\": \"prometheus\",\n            \"uid\": \"${DS_PROMETHEUS}\"\n\
+    \          },\n          \"editorMode\": \"code\",\n          \"expr\": \"sum\
+    \ by (deployment) (kube_deployment_status_replicas_ready{namespace=~\\\"axispay-.*\\\
+    \"})\",\n          \"legendFormat\": \"{{deployment}} ready\",\n          \"range\"\
+    : true,\n          \"instant\": false,\n          \"refId\": \"H\"\n        },\n\
+    \        {\n          \"datasource\": {\n            \"type\": \"prometheus\"\
+    ,\n            \"uid\": \"${DS_PROMETHEUS}\"\n          },\n          \"editorMode\"\
+    : \"code\",\n          \"expr\": \"sum by (deployment) (kube_deployment_spec_replicas{namespace=~\\\
+    \"axispay-.*\\\"})\",\n          \"legendFormat\": \"{{deployment}} desired\"\
+    ,\n          \"range\": true,\n          \"instant\": false,\n          \"refId\"\
+    : \"I\"\n        }\n      ],\n      \"options\": {\n        \"legend\": {\n  \
+    \        \"displayMode\": \"list\",\n          \"placement\": \"bottom\",\n  \
+    \        \"showLegend\": true\n        },\n        \"tooltip\": {\n          \"\
+    mode\": \"multi\",\n          \"sort\": \"desc\"\n        }\n      },\n      \"\
+    fieldConfig\": {\n        \"defaults\": {\n          \"unit\": \"short\",\n  \
+    \        \"custom\": {\n            \"drawStyle\": \"line\",\n            \"lineWidth\"\
+    : 2,\n            \"fillOpacity\": 8,\n            \"showPoints\": \"never\",\n\
+    \            \"stacking\": {\n              \"mode\": \"none\",\n            \
+    \  \"group\": \"A\"\n            },\n            \"axisLabel\": \"\"\n       \
+    \   },\n          \"thresholds\": {\n            \"mode\": \"absolute\",\n   \
+    \         \"steps\": [\n              {\n                \"color\": \"green\"\
+    ,\n                \"value\": null\n              }\n            ]\n         \
+    \ },\n          \"mappings\": []\n        },\n        \"overrides\": []\n    \
+    \  }\n    },\n    {\n      \"id\": 37,\n      \"type\": \"timeseries\",\n    \
+    \  \"title\": \"Container restarts (15m)\",\n      \"description\": \"Rate of\
+    \ restarts, not the lifetime counter. One restart last week is not an incident;\
+    \ three in fifteen minutes is.\",\n      \"datasource\": {\n        \"type\":\
+    \ \"prometheus\",\n        \"uid\": \"${DS_PROMETHEUS}\"\n      },\n      \"gridPos\"\
+    : {\n        \"h\": 7,\n        \"w\": 8,\n        \"x\": 8,\n        \"y\": 31\n\
+    \      },\n      \"targets\": [\n        {\n          \"datasource\": {\n    \
+    \        \"type\": \"prometheus\",\n            \"uid\": \"${DS_PROMETHEUS}\"\n\
+    \          },\n          \"editorMode\": \"code\",\n          \"expr\": \"sum\
+    \ by (pod) (increase(kube_pod_container_status_restarts_total{namespace=~\\\"\
+    axispay-.*\\\"}[15m]))\",\n          \"legendFormat\": \"{{pod}}\",\n        \
+    \  \"range\": true,\n          \"instant\": false,\n          \"refId\": \"K\"\
+    \n        }\n      ],\n      \"options\": {\n        \"legend\": {\n         \
+    \ \"displayMode\": \"list\",\n          \"placement\": \"bottom\",\n         \
+    \ \"showLegend\": true\n        },\n        \"tooltip\": {\n          \"mode\"\
+    : \"multi\",\n          \"sort\": \"desc\"\n        }\n      },\n      \"fieldConfig\"\
+    : {\n        \"defaults\": {\n          \"unit\": \"short\",\n          \"custom\"\
+    : {\n            \"drawStyle\": \"line\",\n            \"lineWidth\": 2,\n   \
+    \         \"fillOpacity\": 8,\n            \"showPoints\": \"never\",\n      \
+    \      \"stacking\": {\n              \"mode\": \"none\",\n              \"group\"\
+    : \"A\"\n            },\n            \"axisLabel\": \"\"\n          },\n     \
+    \     \"thresholds\": {\n            \"mode\": \"absolute\",\n            \"steps\"\
+    : [\n              {\n                \"color\": \"green\",\n                \"\
+    value\": null\n              }\n            ]\n          },\n          \"mappings\"\
+    : []\n        },\n        \"overrides\": []\n      }\n    },\n    {\n      \"\
+    id\": 40,\n      \"type\": \"timeseries\",\n      \"title\": \"HPA replicas \\\
+    u2014 current against maximum\",\n      \"description\": \"Current touching max\
+    \ means autoscaling has run out of room. Not yet an outage \\u2014 which is exactly\
+    \ why it is worth watching.\",\n      \"datasource\": {\n        \"type\": \"\
+    prometheus\",\n        \"uid\": \"${DS_PROMETHEUS}\"\n      },\n      \"gridPos\"\
+    : {\n        \"h\": 7,\n        \"w\": 8,\n        \"x\": 16,\n        \"y\":\
+    \ 31\n      },\n      \"targets\": [\n        {\n          \"datasource\": {\n\
+    \            \"type\": \"prometheus\",\n            \"uid\": \"${DS_PROMETHEUS}\"\
+    \n          },\n          \"editorMode\": \"code\",\n          \"expr\": \"kube_horizontalpodautoscaler_status_current_replicas{namespace=~\\\
+    \"axispay-.*\\\"}\",\n          \"legendFormat\": \"{{horizontalpodautoscaler}}\
+    \ current\",\n          \"range\": true,\n          \"instant\": false,\n    \
+    \      \"refId\": \"M\"\n        },\n        {\n          \"datasource\": {\n\
+    \            \"type\": \"prometheus\",\n            \"uid\": \"${DS_PROMETHEUS}\"\
+    \n          },\n          \"editorMode\": \"code\",\n          \"expr\": \"kube_horizontalpodautoscaler_spec_max_replicas{namespace=~\\\
+    \"axispay-.*\\\"}\",\n          \"legendFormat\": \"{{horizontalpodautoscaler}}\
+    \ max\",\n          \"range\": true,\n          \"instant\": false,\n        \
+    \  \"refId\": \"N\"\n        }\n      ],\n      \"options\": {\n        \"legend\"\
+    : {\n          \"displayMode\": \"list\",\n          \"placement\": \"bottom\"\
+    ,\n          \"showLegend\": true\n        },\n        \"tooltip\": {\n      \
+    \    \"mode\": \"multi\",\n          \"sort\": \"desc\"\n        }\n      },\n\
+    \      \"fieldConfig\": {\n        \"defaults\": {\n          \"unit\": \"short\"\
+    ,\n          \"custom\": {\n            \"drawStyle\": \"line\",\n           \
+    \ \"lineWidth\": 2,\n            \"fillOpacity\": 8,\n            \"showPoints\"\
+    : \"never\",\n            \"stacking\": {\n              \"mode\": \"none\",\n\
+    \              \"group\": \"A\"\n            },\n            \"axisLabel\": \"\
+    \"\n          },\n          \"thresholds\": {\n            \"mode\": \"absolute\"\
+    ,\n            \"steps\": [\n              {\n                \"color\": \"green\"\
+    ,\n                \"value\": null\n              }\n            ]\n         \
+    \ },\n          \"mappings\": []\n        },\n        \"overrides\": []\n    \
+    \  }\n    },\n    {\n      \"id\": 41,\n      \"type\": \"row\",\n      \"title\"\
+    : \"Logs \\u2014 errors across the platform\",\n      \"collapsed\": false,\n\
+    \      \"gridPos\": {\n        \"h\": 1,\n        \"w\": 24,\n        \"x\": 0,\n\
+    \        \"y\": 38\n      },\n      \"panels\": []\n    },\n    {\n      \"id\"\
+    : 42,\n      \"type\": \"logs\",\n      \"title\": \"Errors, all AxisPay namespaces\"\
+    ,\n      \"description\": \"Structured JSON on stdout is what makes this query\
+    \ possible. Paste a correlation_id into the query to follow one payment across\
+    \ all seven services it touched:  {namespace=~\\\"axispay-.*\\\"} | json | correlation_id=\\\
+    \"...\\\"\",\n      \"datasource\": {\n        \"type\": \"loki\",\n        \"\
+    uid\": \"${DS_LOKI}\"\n      },\n      \"gridPos\": {\n        \"h\": 10,\n  \
+    \      \"w\": 24,\n        \"x\": 0,\n        \"y\": 39\n      },\n      \"targets\"\
+    : [\n        {\n          \"datasource\": {\n            \"type\": \"loki\",\n\
+    \            \"uid\": \"${DS_LOKI}\"\n          },\n          \"expr\": \"{namespace=~\\\
+    \"axispay-.*\\\"} | json | level=\\\"error\\\"\",\n          \"queryType\": \"\
+    range\",\n          \"refId\": \"A\"\n        }\n      ],\n      \"options\":\
+    \ {\n        \"showTime\": true,\n        \"sortOrder\": \"Descending\",\n   \
+    \     \"wrapLogMessage\": true,\n        \"prettifyLogMessage\": true,\n     \
+    \   \"enableLogDetails\": true\n      }\n    }\n  ]\n}\n"
 ---
 apiVersion: v1
 kind: ConfigMap
 metadata:
   name: axispay-dashboard-triage
   namespace: axispay-observability
-  labels:
-    grafana_dashboard: "1"
-    app.kubernetes.io/part-of: axispay
-    axispay.io/day-introduced: "5"
 data:
-  axispay-triage.json: |
-    {
-      "uid": "axispay-triage",
-      "title": "AxisPay \u2014 Incident Triage",
-      "description": "The board to open when something is wrong. Ordered to match the triage loop taught on Day 2.",
-      "tags": [
-        "axispay",
-        "triage",
-        "incident"
-      ],
-      "timezone": "browser",
-      "schemaVersion": 39,
-      "version": 1,
-      "refresh": "10s",
-      "editable": true,
-      "time": {
-        "from": "now-30m",
-        "to": "now"
-      },
-      "templating": {
-        "list": [
-          {
-            "name": "DS_PROMETHEUS",
-            "type": "datasource",
-            "query": "prometheus",
-            "current": {
-              "text": "Prometheus",
-              "value": "Prometheus"
-            },
-            "hide": 0
-          },
-          {
-            "name": "DS_LOKI",
-            "type": "datasource",
-            "query": "loki",
-            "current": {
-              "text": "Loki",
-              "value": "Loki"
-            },
-            "hide": 0
-          }
-        ]
-      },
-      "annotations": {
-        "list": []
-      },
-      "panels": [
-        {
-          "id": 501,
-          "type": "row",
-          "title": "Start here \u2014 what is not Ready",
-          "collapsed": false,
-          "gridPos": {
-            "h": 1,
-            "w": 24,
-            "x": 0,
-            "y": 0
-          },
-          "panels": []
-        },
-        {
-          "id": 502,
-          "type": "table",
-          "title": "Pods not Ready",
-          "description": "The first question in the triage loop is always 'is it Ready', never 'is it Running'. This table answers it for the whole platform in one place.",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "gridPos": {
-            "h": 8,
-            "w": 12,
-            "x": 0,
-            "y": 1
-          },
-          "targets": [
-            {
-              "datasource": {
-                "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
-              },
-              "editorMode": "code",
-              "expr": "kube_pod_status_ready{namespace=~\"axispay-.*\",condition=\"true\"} == 0",
-              "legendFormat": "",
-              "range": false,
-              "instant": true,
-              "refId": "J",
-              "format": "table"
-            }
-          ],
-          "transformations": [
-            {
-              "id": "organize",
-              "options": {}
-            }
-          ],
-          "fieldConfig": {
-            "defaults": {
-              "custom": {
-                "align": "auto"
-              }
-            },
-            "overrides": []
-          }
-        },
-        {
-          "id": 504,
-          "type": "table",
-          "title": "Services with zero ready endpoints",
-          "description": "An empty endpoint list means callers get connection refused. Two causes: every pod is unready, or the Service selector matches nothing. Check the labels before you check the pods.",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "gridPos": {
-            "h": 8,
-            "w": 12,
-            "x": 12,
-            "y": 1
-          },
-          "targets": [
-            {
-              "datasource": {
-                "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
-              },
-              "editorMode": "code",
-              "expr": "kube_endpoint_address_available{namespace=~\"axispay-.*\"} == 0",
-              "legendFormat": "",
-              "range": false,
-              "instant": true,
-              "refId": "L",
-              "format": "table"
-            }
-          ],
-          "transformations": [
-            {
-              "id": "organize",
-              "options": {}
-            }
-          ],
-          "fieldConfig": {
-            "defaults": {
-              "custom": {
-                "align": "auto"
-              }
-            },
-            "overrides": []
-          }
-        },
-        {
-          "id": 507,
-          "type": "timeseries",
-          "title": "Restart reasons",
-          "description": "OOMKilled, Error, Completed. The reason narrows the search before you open a single log.",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "gridPos": {
-            "h": 7,
-            "w": 8,
-            "x": 0,
-            "y": 9
-          },
-          "targets": [
-            {
-              "datasource": {
-                "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
-              },
-              "editorMode": "code",
-              "expr": "sum by (reason) (kube_pod_container_status_last_terminated_reason{namespace=~\"axispay-.*\"})",
-              "legendFormat": "{{reason}}",
-              "range": true,
-              "instant": false,
-              "refId": "M"
-            }
-          ],
-          "options": {
-            "legend": {
-              "displayMode": "list",
-              "placement": "bottom",
-              "showLegend": true
-            },
-            "tooltip": {
-              "mode": "multi",
-              "sort": "desc"
-            }
-          },
-          "fieldConfig": {
-            "defaults": {
-              "unit": "short",
-              "custom": {
-                "drawStyle": "line",
-                "lineWidth": 2,
-                "fillOpacity": 8,
-                "showPoints": "never",
-                "stacking": {
-                  "mode": "none",
-                  "group": "A"
-                },
-                "axisLabel": ""
-              },
-              "thresholds": {
-                "mode": "absolute",
-                "steps": [
-                  {
-                    "color": "green",
-                    "value": null
-                  }
-                ]
-              },
-              "mappings": []
-            },
-            "overrides": []
-          }
-        },
-        {
-          "id": 509,
-          "type": "timeseries",
-          "title": "Pending pods",
-          "description": "Pending is a SCHEDULING problem, not an application one. Insufficient CPU, an unbound PVC, or a taint with no toleration.",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "gridPos": {
-            "h": 7,
-            "w": 8,
-            "x": 8,
-            "y": 9
-          },
-          "targets": [
-            {
-              "datasource": {
-                "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
-              },
-              "editorMode": "code",
-              "expr": "sum by (namespace) (kube_pod_status_phase{namespace=~\"axispay-.*\",phase=\"Pending\"})",
-              "legendFormat": "{{namespace}}",
-              "range": true,
-              "instant": false,
-              "refId": "O"
-            }
-          ],
-          "options": {
-            "legend": {
-              "displayMode": "list",
-              "placement": "bottom",
-              "showLegend": true
-            },
-            "tooltip": {
-              "mode": "multi",
-              "sort": "desc"
-            }
-          },
-          "fieldConfig": {
-            "defaults": {
-              "unit": "short",
-              "custom": {
-                "drawStyle": "line",
-                "lineWidth": 2,
-                "fillOpacity": 8,
-                "showPoints": "never",
-                "stacking": {
-                  "mode": "none",
-                  "group": "A"
-                },
-                "axisLabel": ""
-              },
-              "thresholds": {
-                "mode": "absolute",
-                "steps": [
-                  {
-                    "color": "green",
-                    "value": null
-                  }
-                ]
-              },
-              "mappings": []
-            },
-            "overrides": []
-          }
-        },
-        {
-          "id": 511,
-          "type": "timeseries",
-          "title": "Image pull failures",
-          "description": "On Minikube this is almost always a tag that was never built into the node's runtime, not a registry problem.",
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "gridPos": {
-            "h": 7,
-            "w": 8,
-            "x": 16,
-            "y": 9
-          },
-          "targets": [
-            {
-              "datasource": {
-                "type": "prometheus",
-                "uid": "${DS_PROMETHEUS}"
-              },
-              "editorMode": "code",
-              "expr": "sum by (namespace) (kube_pod_container_status_waiting_reason{namespace=~\"axispay-.*\",reason=~\"ImagePullBackOff|ErrImagePull\"})",
-              "legendFormat": "{{namespace}}",
-              "range": true,
-              "instant": false,
-              "refId": "Q"
-            }
-          ],
-          "options": {
-            "legend": {
-              "displayMode": "list",
-              "placement": "bottom",
-              "showLegend": true
-            },
-            "tooltip": {
-              "mode": "multi",
-              "sort": "desc"
-            }
-          },
-          "fieldConfig": {
-            "defaults": {
-              "unit": "short",
-              "custom": {
-                "drawStyle": "line",
-                "lineWidth": 2,
-                "fillOpacity": 8,
-                "showPoints": "never",
-                "stacking": {
-                  "mode": "none",
-                  "group": "A"
-                },
-                "axisLabel": ""
-              },
-              "thresholds": {
-                "mode": "absolute",
-                "steps": [
-                  {
-                    "color": "green",
-                    "value": null
-                  }
-                ]
-              },
-              "mappings": []
-            },
-            "overrides": []
-          }
-        },
-        {
-          "id": 512,
-          "type": "row",
-          "title": "Recent errors and their context",
-          "collapsed": false,
-          "gridPos": {
-            "h": 1,
-            "w": 24,
-            "x": 0,
-            "y": 16
-          },
-          "panels": []
-        },
-        {
-          "id": 513,
-          "type": "logs",
-          "title": "payment path errors, newest first",
-          "description": "Every line carries correlation_id, service, pod and duration_ms. Copy a correlation_id out of a failing request and re-query on it to get the full path.",
-          "datasource": {
-            "type": "loki",
-            "uid": "${DS_LOKI}"
-          },
-          "gridPos": {
-            "h": 12,
-            "w": 24,
-            "x": 0,
-            "y": 17
-          },
-          "targets": [
-            {
-              "datasource": {
-                "type": "loki",
-                "uid": "${DS_LOKI}"
-              },
-              "expr": "{namespace=~\"axispay-core|axispay-edge\"} | json | level=~\"error|warning\"",
-              "queryType": "range",
-              "refId": "A"
-            }
-          ],
-          "options": {
-            "showTime": true,
-            "sortOrder": "Descending",
-            "wrapLogMessage": true,
-            "prettifyLogMessage": true,
-            "enableLogDetails": true
-          }
-        }
-      ]
-    }
+  axispay-triage.json: "{\n  \"uid\": \"axispay-triage\",\n  \"title\": \"AxisPay\
+    \ \\u2014 Incident Triage\",\n  \"description\": \"The board to open when something\
+    \ is wrong. Ordered to match the triage loop taught on Day 2.\",\n  \"tags\":\
+    \ [\n    \"axispay\",\n    \"triage\",\n    \"incident\"\n  ],\n  \"timezone\"\
+    : \"browser\",\n  \"schemaVersion\": 39,\n  \"version\": 1,\n  \"refresh\": \"\
+    10s\",\n  \"editable\": true,\n  \"time\": {\n    \"from\": \"now-30m\",\n   \
+    \ \"to\": \"now\"\n  },\n  \"templating\": {\n    \"list\": [\n      {\n     \
+    \   \"name\": \"DS_PROMETHEUS\",\n        \"type\": \"datasource\",\n        \"\
+    query\": \"prometheus\",\n        \"current\": {\n          \"text\": \"Prometheus\"\
+    ,\n          \"value\": \"Prometheus\"\n        },\n        \"hide\": 0\n    \
+    \  },\n      {\n        \"name\": \"DS_LOKI\",\n        \"type\": \"datasource\"\
+    ,\n        \"query\": \"loki\",\n        \"current\": {\n          \"text\": \"\
+    Loki\",\n          \"value\": \"Loki\"\n        },\n        \"hide\": 0\n    \
+    \  }\n    ]\n  },\n  \"annotations\": {\n    \"list\": []\n  },\n  \"panels\"\
+    : [\n    {\n      \"id\": 501,\n      \"type\": \"row\",\n      \"title\": \"\
+    Start here \\u2014 what is not Ready\",\n      \"collapsed\": false,\n      \"\
+    gridPos\": {\n        \"h\": 1,\n        \"w\": 24,\n        \"x\": 0,\n     \
+    \   \"y\": 0\n      },\n      \"panels\": []\n    },\n    {\n      \"id\": 502,\n\
+    \      \"type\": \"table\",\n      \"title\": \"Pods not Ready\",\n      \"description\"\
+    : \"The first question in the triage loop is always 'is it Ready', never 'is it\
+    \ Running'. This table answers it for the whole platform in one place.\",\n  \
+    \    \"datasource\": {\n        \"type\": \"prometheus\",\n        \"uid\": \"\
+    ${DS_PROMETHEUS}\"\n      },\n      \"gridPos\": {\n        \"h\": 8,\n      \
+    \  \"w\": 12,\n        \"x\": 0,\n        \"y\": 1\n      },\n      \"targets\"\
+    : [\n        {\n          \"datasource\": {\n            \"type\": \"prometheus\"\
+    ,\n            \"uid\": \"${DS_PROMETHEUS}\"\n          },\n          \"editorMode\"\
+    : \"code\",\n          \"expr\": \"kube_pod_status_ready{namespace=~\\\"axispay-.*\\\
+    \",condition=\\\"true\\\"} == 0\",\n          \"legendFormat\": \"\",\n      \
+    \    \"range\": false,\n          \"instant\": true,\n          \"refId\": \"\
+    J\",\n          \"format\": \"table\"\n        }\n      ],\n      \"transformations\"\
+    : [\n        {\n          \"id\": \"organize\",\n          \"options\": {}\n \
+    \       }\n      ],\n      \"fieldConfig\": {\n        \"defaults\": {\n     \
+    \     \"custom\": {\n            \"align\": \"auto\"\n          }\n        },\n\
+    \        \"overrides\": []\n      }\n    },\n    {\n      \"id\": 504,\n     \
+    \ \"type\": \"table\",\n      \"title\": \"Services with zero ready endpoints\"\
+    ,\n      \"description\": \"An empty endpoint list means callers get connection\
+    \ refused. Two causes: every pod is unready, or the Service selector matches nothing.\
+    \ Check the labels before you check the pods.\",\n      \"datasource\": {\n  \
+    \      \"type\": \"prometheus\",\n        \"uid\": \"${DS_PROMETHEUS}\"\n    \
+    \  },\n      \"gridPos\": {\n        \"h\": 8,\n        \"w\": 12,\n        \"\
+    x\": 12,\n        \"y\": 1\n      },\n      \"targets\": [\n        {\n      \
+    \    \"datasource\": {\n            \"type\": \"prometheus\",\n            \"\
+    uid\": \"${DS_PROMETHEUS}\"\n          },\n          \"editorMode\": \"code\"\
+    ,\n          \"expr\": \"kube_endpoint_address_available{namespace=~\\\"axispay-.*\\\
+    \"} == 0\",\n          \"legendFormat\": \"\",\n          \"range\": false,\n\
+    \          \"instant\": true,\n          \"refId\": \"L\",\n          \"format\"\
+    : \"table\"\n        }\n      ],\n      \"transformations\": [\n        {\n  \
+    \        \"id\": \"organize\",\n          \"options\": {}\n        }\n      ],\n\
+    \      \"fieldConfig\": {\n        \"defaults\": {\n          \"custom\": {\n\
+    \            \"align\": \"auto\"\n          }\n        },\n        \"overrides\"\
+    : []\n      }\n    },\n    {\n      \"id\": 507,\n      \"type\": \"timeseries\"\
+    ,\n      \"title\": \"Restart reasons\",\n      \"description\": \"OOMKilled,\
+    \ Error, Completed. The reason narrows the search before you open a single log.\"\
+    ,\n      \"datasource\": {\n        \"type\": \"prometheus\",\n        \"uid\"\
+    : \"${DS_PROMETHEUS}\"\n      },\n      \"gridPos\": {\n        \"h\": 7,\n  \
+    \      \"w\": 8,\n        \"x\": 0,\n        \"y\": 9\n      },\n      \"targets\"\
+    : [\n        {\n          \"datasource\": {\n            \"type\": \"prometheus\"\
+    ,\n            \"uid\": \"${DS_PROMETHEUS}\"\n          },\n          \"editorMode\"\
+    : \"code\",\n          \"expr\": \"sum by (reason) (kube_pod_container_status_last_terminated_reason{namespace=~\\\
+    \"axispay-.*\\\"})\",\n          \"legendFormat\": \"{{reason}}\",\n         \
+    \ \"range\": true,\n          \"instant\": false,\n          \"refId\": \"M\"\n\
+    \        }\n      ],\n      \"options\": {\n        \"legend\": {\n          \"\
+    displayMode\": \"list\",\n          \"placement\": \"bottom\",\n          \"showLegend\"\
+    : true\n        },\n        \"tooltip\": {\n          \"mode\": \"multi\",\n \
+    \         \"sort\": \"desc\"\n        }\n      },\n      \"fieldConfig\": {\n\
+    \        \"defaults\": {\n          \"unit\": \"short\",\n          \"custom\"\
+    : {\n            \"drawStyle\": \"line\",\n            \"lineWidth\": 2,\n   \
+    \         \"fillOpacity\": 8,\n            \"showPoints\": \"never\",\n      \
+    \      \"stacking\": {\n              \"mode\": \"none\",\n              \"group\"\
+    : \"A\"\n            },\n            \"axisLabel\": \"\"\n          },\n     \
+    \     \"thresholds\": {\n            \"mode\": \"absolute\",\n            \"steps\"\
+    : [\n              {\n                \"color\": \"green\",\n                \"\
+    value\": null\n              }\n            ]\n          },\n          \"mappings\"\
+    : []\n        },\n        \"overrides\": []\n      }\n    },\n    {\n      \"\
+    id\": 509,\n      \"type\": \"timeseries\",\n      \"title\": \"Pending pods\"\
+    ,\n      \"description\": \"Pending is a SCHEDULING problem, not an application\
+    \ one. Insufficient CPU, an unbound PVC, or a taint with no toleration.\",\n \
+    \     \"datasource\": {\n        \"type\": \"prometheus\",\n        \"uid\": \"\
+    ${DS_PROMETHEUS}\"\n      },\n      \"gridPos\": {\n        \"h\": 7,\n      \
+    \  \"w\": 8,\n        \"x\": 8,\n        \"y\": 9\n      },\n      \"targets\"\
+    : [\n        {\n          \"datasource\": {\n            \"type\": \"prometheus\"\
+    ,\n            \"uid\": \"${DS_PROMETHEUS}\"\n          },\n          \"editorMode\"\
+    : \"code\",\n          \"expr\": \"sum by (namespace) (kube_pod_status_phase{namespace=~\\\
+    \"axispay-.*\\\",phase=\\\"Pending\\\"})\",\n          \"legendFormat\": \"{{namespace}}\"\
+    ,\n          \"range\": true,\n          \"instant\": false,\n          \"refId\"\
+    : \"O\"\n        }\n      ],\n      \"options\": {\n        \"legend\": {\n  \
+    \        \"displayMode\": \"list\",\n          \"placement\": \"bottom\",\n  \
+    \        \"showLegend\": true\n        },\n        \"tooltip\": {\n          \"\
+    mode\": \"multi\",\n          \"sort\": \"desc\"\n        }\n      },\n      \"\
+    fieldConfig\": {\n        \"defaults\": {\n          \"unit\": \"short\",\n  \
+    \        \"custom\": {\n            \"drawStyle\": \"line\",\n            \"lineWidth\"\
+    : 2,\n            \"fillOpacity\": 8,\n            \"showPoints\": \"never\",\n\
+    \            \"stacking\": {\n              \"mode\": \"none\",\n            \
+    \  \"group\": \"A\"\n            },\n            \"axisLabel\": \"\"\n       \
+    \   },\n          \"thresholds\": {\n            \"mode\": \"absolute\",\n   \
+    \         \"steps\": [\n              {\n                \"color\": \"green\"\
+    ,\n                \"value\": null\n              }\n            ]\n         \
+    \ },\n          \"mappings\": []\n        },\n        \"overrides\": []\n    \
+    \  }\n    },\n    {\n      \"id\": 511,\n      \"type\": \"timeseries\",\n   \
+    \   \"title\": \"Image pull failures\",\n      \"description\": \"On Minikube\
+    \ this is almost always a tag that was never built into the node's runtime, not\
+    \ a registry problem.\",\n      \"datasource\": {\n        \"type\": \"prometheus\"\
+    ,\n        \"uid\": \"${DS_PROMETHEUS}\"\n      },\n      \"gridPos\": {\n   \
+    \     \"h\": 7,\n        \"w\": 8,\n        \"x\": 16,\n        \"y\": 9\n   \
+    \   },\n      \"targets\": [\n        {\n          \"datasource\": {\n       \
+    \     \"type\": \"prometheus\",\n            \"uid\": \"${DS_PROMETHEUS}\"\n \
+    \         },\n          \"editorMode\": \"code\",\n          \"expr\": \"sum by\
+    \ (namespace) (kube_pod_container_status_waiting_reason{namespace=~\\\"axispay-.*\\\
+    \",reason=~\\\"ImagePullBackOff|ErrImagePull\\\"})\",\n          \"legendFormat\"\
+    : \"{{namespace}}\",\n          \"range\": true,\n          \"instant\": false,\n\
+    \          \"refId\": \"Q\"\n        }\n      ],\n      \"options\": {\n     \
+    \   \"legend\": {\n          \"displayMode\": \"list\",\n          \"placement\"\
+    : \"bottom\",\n          \"showLegend\": true\n        },\n        \"tooltip\"\
+    : {\n          \"mode\": \"multi\",\n          \"sort\": \"desc\"\n        }\n\
+    \      },\n      \"fieldConfig\": {\n        \"defaults\": {\n          \"unit\"\
+    : \"short\",\n          \"custom\": {\n            \"drawStyle\": \"line\",\n\
+    \            \"lineWidth\": 2,\n            \"fillOpacity\": 8,\n            \"\
+    showPoints\": \"never\",\n            \"stacking\": {\n              \"mode\"\
+    : \"none\",\n              \"group\": \"A\"\n            },\n            \"axisLabel\"\
+    : \"\"\n          },\n          \"thresholds\": {\n            \"mode\": \"absolute\"\
+    ,\n            \"steps\": [\n              {\n                \"color\": \"green\"\
+    ,\n                \"value\": null\n              }\n            ]\n         \
+    \ },\n          \"mappings\": []\n        },\n        \"overrides\": []\n    \
+    \  }\n    },\n    {\n      \"id\": 512,\n      \"type\": \"row\",\n      \"title\"\
+    : \"Recent errors and their context\",\n      \"collapsed\": false,\n      \"\
+    gridPos\": {\n        \"h\": 1,\n        \"w\": 24,\n        \"x\": 0,\n     \
+    \   \"y\": 16\n      },\n      \"panels\": []\n    },\n    {\n      \"id\": 513,\n\
+    \      \"type\": \"logs\",\n      \"title\": \"payment path errors, newest first\"\
+    ,\n      \"description\": \"Every line carries correlation_id, service, pod and\
+    \ duration_ms. Copy a correlation_id out of a failing request and re-query on\
+    \ it to get the full path.\",\n      \"datasource\": {\n        \"type\": \"loki\"\
+    ,\n        \"uid\": \"${DS_LOKI}\"\n      },\n      \"gridPos\": {\n        \"\
+    h\": 12,\n        \"w\": 24,\n        \"x\": 0,\n        \"y\": 17\n      },\n\
+    \      \"targets\": [\n        {\n          \"datasource\": {\n            \"\
+    type\": \"loki\",\n            \"uid\": \"${DS_LOKI}\"\n          },\n       \
+    \   \"expr\": \"{namespace=~\\\"axispay-core|axispay-edge\\\"} | json | level=~\\\
+    \"error|warning\\\"\",\n          \"queryType\": \"range\",\n          \"refId\"\
+    : \"A\"\n        }\n      ],\n      \"options\": {\n        \"showTime\": true,\n\
+    \        \"sortOrder\": \"Descending\",\n        \"wrapLogMessage\": true,\n \
+    \       \"prettifyLogMessage\": true,\n        \"enableLogDetails\": true\n  \
+    \    }\n    }\n  ]\n}\n"
