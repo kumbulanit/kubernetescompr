@@ -4,6 +4,18 @@ This lab is about making services reach each other by name.
 
 In simple words: instead of remembering IP addresses, you use names.
 
+### What this concept means
+DNS in Kubernetes is the reason services can talk to each other by name instead of by hard-coded IP addresses. When a Service is created, Kubernetes gives it a DNS name that other workloads can resolve inside the cluster.
+
+This is one of the most important convenience features in Kubernetes. It reduces coupling between services and makes deployment changes safer. If DNS is broken, the application may appear "randomly" unavailable even though the pods themselves are running.
+
+```mermaid
+flowchart LR
+  ServiceA[Service A] --> DNS[Cluster DNS]
+  DNS --> ServiceB[Service B]
+```
+
+
 Do this first:
 What you should expect to see: you understand the goal of the lab and the files involved.
 
@@ -22,6 +34,10 @@ What you should expect to see: the command runs without errors and the result ma
 ```bash
 kubectl run dns-check --rm -it --image=busybox:1.36 --restart=Never -- nslookup <service-name>.<namespace>.svc.cluster.local
 ```
+
+Expected result:
+- The pod starts.
+- The DNS test prints either a resolved address or a clear error message.
 This test checks whether the Service name can be resolved.
 
 Then do this:
@@ -40,3 +56,7 @@ What you should expect to see: the validation command finishes successfully.
 ```bash
 make validate-lab LAB=L4.2
 ```
+
+Expected result:
+- The validation command finishes successfully.
+- You should see a passing message for the lab.
