@@ -102,3 +102,175 @@ Tips & tricks:
 - You can look at a failed request and decide which layer to inspect first.
 - You can show concrete evidence with `kubectl get`, `kubectl describe`, `kubectl exec`, `curl`, and the provided validation scripts.
 - `make validate-day4` passes when you are finished.
+
+---
+
+## Rebuild everything from scratch (disaster recovery)
+
+Use this when your cluster crashed, you are coming back to Day 4 after a break and something feels broken, or you want a clean **Day 1 + Day 2 + Day 3 + Day 4** platform again before continuing with Services, DNS, Ingress/TLS, NetworkPolicy, placement, and PodDisruptionBudgets.
+
+Why not just re-apply an old lab manifest? Because Kubernetes tries to merge your old YAML with the live object already in the cluster. If that live state has drifted, the merge can fail with confusing errors such as:
+
+```text
+The Deployment "payment-service" is invalid:
+* spec.template.spec.containers[0].env[0].valueFrom: Invalid value: "": may not be specified when `value` is not empty
+```
+
+Deleting the AxisPay namespaces first removes that drifted state, so Kubernetes creates fresh objects instead of trying to patch a broken mix of old and new configuration.
+
+**Run this:**
+
+```bash
+make rebuild-day4
+```
+
+This is the important part: **you do not need to run four separate commands**. `make rebuild-day4` is one command that wipes the old Day 1–4 platform, then rebuilds **Day 1**, then **Day 2**, then **Day 3**, then **Day 4** in the correct dependency order. Even though you are on Day 4, this single command gives you a complete, working **Day 1 + Day 2 + Day 3 + Day 4** platform from absolutely nothing.
+
+Expected result:
+
+```text
+$ make rebuild-day4
+==> Deleting all AxisPay namespaces — this removes every workload, PVC and secret
+namespace "axispay-edge" deleted
+namespace "axispay-core" deleted
+namespace "axispay-async" deleted
+namespace "axispay-ops" deleted
+namespace "axispay-data" deleted
+namespace "axispay-observability" deleted
+Namespaces removed. Run 'make rebuild-day1' (or rebuild-day2 / day3 / day4 / day5) to recreate the platform.
+
+namespace/axispay-edge created
+namespace/axispay-core created
+namespace/axispay-async created
+
+==> Deploying Day 1
+deployment.apps/edge-gateway created
+deployment.apps/auth-service created
+deployment.apps/merchant-service created
+deployment.apps/payment-service created
+service/edge-gateway created
+service/auth-service created
+service/merchant-service created
+service/payment-service created
+pod/payment-service-bare created
+...
+✓ DAY 1 CHECKPOINT PASSED — 12/12 checks
+
+==> Deploying Day 2
+namespace/axispay-ops created
+resourcequota/axispay-core-quota created
+limitrange/axispay-core-limits created
+deployment.apps/fraud-service created
+deployment.apps/routing-service created
+deployment.apps/loadgen created
+service/fraud-service created
+service/routing-service created
+service/node-agent created
+service/loadgen created
+horizontalpodautoscaler.autoscaling/payment-service created
+horizontalpodautoscaler.autoscaling/fraud-service created
+daemonset.apps/node-agent created
+job.batch/recon-worker created
+cronjob.batch/settlement-cron created
+...
+✓ DAY 2 CHECKPOINT PASSED — 21/21 checks
+
+==> Deploying Day 3
+namespace/axispay-data created
+configmap/axispay-platform-config created
+secret/axispay-db-credentials created
+storageclass.storage.k8s.io/axispay-standard created
+persistentvolume/axispay-ledger-archive created
+statefulset.apps/postgres created
+statefulset.apps/redis created
+statefulset.apps/rabbitmq created
+deployment.apps/ledger-service created
+deployment.apps/customer-service created
+...
+✓ DAY 3 CHECKPOINT PASSED — 29/29 checks
+
+==> Deploying Day 4
+configmap/axispay-async-config created
+secret/axispay-db-credentials created
+deployment.apps/settlement-service created
+service/settlement-service created
+deployment.apps/notification-service created
+service/notification-service created
+deployment.apps/audit-service created
+service/audit-service created
+deployment.apps/reporting-service created
+service/reporting-service created
+poddisruptionbudget.policy/payment-service created
+poddisruptionbudget.policy/edge-gateway created
+poddisruptionbudget.policy/auth-service created
+poddisruptionbudget.policy/merchant-service created
+poddisruptionbudget.policy/fraud-service created
+poddisruptionbudget.policy/postgres created
+secret/axispay-tls created
+ingress.networking.k8s.io/axispay-api created
+ingress.networking.k8s.io/axispay-portal created
+networkpolicy.networking.k8s.io/default-deny-all created
+networkpolicy.networking.k8s.io/default-deny-all created
+networkpolicy.networking.k8s.io/default-deny-all created
+networkpolicy.networking.k8s.io/allow-dns-egress created
+networkpolicy.networking.k8s.io/allow-dns-egress created
+networkpolicy.networking.k8s.io/allow-dns-egress created
+networkpolicy.networking.k8s.io/allow-edge-to-payment created
+networkpolicy.networking.k8s.io/allow-edge-to-merchant created
+networkpolicy.networking.k8s.io/allow-payment-to-core-services created
+networkpolicy.networking.k8s.io/allow-async-to-payment-read created
+networkpolicy.networking.k8s.io/allow-core-to-data created
+networkpolicy.networking.k8s.io/allow-core-internal created
+networkpolicy.networking.k8s.io/allow-core-and-async-to-data created
+networkpolicy.networking.k8s.io/allow-async-egress created
+networkpolicy.networking.k8s.io/allow-prometheus-scrape created
+networkpolicy.networking.k8s.io/allow-prometheus-scrape created
+networkpolicy.networking.k8s.io/default-deny-all created
+networkpolicy.networking.k8s.io/allow-dns-egress created
+networkpolicy.networking.k8s.io/allow-ingress-controller created
+networkpolicy.networking.k8s.io/allow-edge-egress-to-core created
+networkpolicy.networking.k8s.io/allow-gateway-to-auth created
+networkpolicy.networking.k8s.io/allow-prometheus-scrape created
+deployment.apps/payment-service configured
+deployment.apps/fraud-service configured
+deployment.apps/payment-service configured
+service/edge-gateway-nodeport created
+service/acquirer-gateway created
+service/payment-service-headless created
+
+$ kubectl get ingress -A
+NAMESPACE       NAME             CLASS   HOSTS                ADDRESS       PORTS     AGE
+axispay-edge    axispay-api      nginx   api.axispay.local    192.168.49.2 80, 443   11s
+axispay-async   axispay-portal   nginx   portal.axispay.local 192.168.49.2 80, 443   11s
+
+Cluster
+----------------------------------------------------------------
+  ✓ 1/1 nodes Ready
+  ✓ Calico present — NetworkPolicy is actually enforced
+
+Namespaces
+----------------------------------------------------------------
+  ✓ axispay-edge
+  ✓ axispay-core
+  ✓ axispay-ops
+  ✓ axispay-async
+  ✓ axispay-data
+
+Day 4 — ingress, DNS and segmentation
+----------------------------------------------------------------
+  ✓ Ingress present
+  ✓ default-deny in place
+  ✓ simulate-netpol.py: every policy assertion holds
+
+End-to-end — a payment still works
+----------------------------------------------------------------
+  ✓ payment accepted through the Ingress (201)
+
+✓ DAY 4 CHECKPOINT PASSED — 40/40 checks
+```
+
+On a fresh rebuild, Day 4 usually pauses longest while the Day 3 stateful workloads become ready and the Ingress controller updates the `ADDRESS` field. That is normal.
+
+If you are already further along in the course, use the matching higher rebuild target instead, for example `make rebuild-day5`.
+
+**Warning:** this command is destructive. It deletes everything in the AxisPay namespaces, including current workloads, Secrets, PVCs, and any data stored in those volumes. Only run it when you are fine losing the current state.
