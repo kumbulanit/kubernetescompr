@@ -1,6 +1,6 @@
 {{/*
 ================================================================================
-One template renders every AxisPay Deployment.
+L5.3 / L5.4 — One template renders every AxisPay Deployment.
 ================================================================================
 Fifteen copies of the same file is fifteen places to forget a probe. Ranging
 over .Values.services makes the security context, the probes and the rollout
@@ -55,10 +55,12 @@ spec:
              edit silently applies only to pods created afterwards. */}}
         checksum/config: {{ toYaml $.Values.global | sha256sum }}
     spec:
+      # The pod gets a named identity, and token mounting stays a separate choice.
       serviceAccountName: {{ $name }}
       automountServiceAccountToken: {{ $.Values.serviceAccount.automountToken }}
       terminationGracePeriodSeconds: {{ $.Values.terminationGracePeriodSeconds }}
       securityContext:
+        # Pod-level security hardens every container before per-container settings apply.
         {{- include "axispay.podSecurityContext" $ | nindent 8 }}
       {{- if eq ($svc.antiAffinity | default "none") "required" }}
       affinity:

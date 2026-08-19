@@ -1,8 +1,20 @@
+# ==============================================================================
+# L5.5 — Grafana dashboards provisioned as Kubernetes data
+# ==============================================================================
+# This ConfigMap carries the dashboard JSON that Grafana imports automatically.
+# Keeping dashboards in Git means the class sees the same panels, thresholds and
+# PromQL every time instead of relying on manual clicks in the UI.
+#
+# Notice that the dashboard body is JSON inside YAML. Kubernetes stores it as a
+# string; Grafana is the tool that understands the JSON schema.
+# ==============================================================================
 apiVersion: v1
 kind: ConfigMap
 metadata:
+  # Grafana sidecars discover dashboard ConfigMaps by labels and namespace, then import them on startup.
   name: axispay-dashboard-platform
   namespace: axispay-observability
+# The JSON below is the actual dashboard definition Grafana renders.
 data:
   axispay-platform.json: "{\n  \"uid\": \"axispay-platform\",\n  \"title\": \"AxisPay\
     \ \\u2014 Payment Platform\",\n  \"description\": \"Golden signals, business outcomes\

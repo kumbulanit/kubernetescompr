@@ -20,6 +20,28 @@
 
 ---
 
+## What this concept means
+
+A `StatefulSet` is for workloads whose replicas are not interchangeable. A `Deployment` is great for stateless Java services because any replica can answer the same request. Databases, queues, and similar systems often need each replica to keep its own identity and its own storage.
+
+StatefulSets give you three important guarantees: stable pod names, ordered creation and update, and stable per-pod storage. If Kubernetes creates `postgres-0`, the matching claim stays tied to that ordinal, so `postgres-0` comes back as `postgres-0` and reattaches its own disk instead of getting a random replacement.
+
+That does not magically create a clustered database. StatefulSet solves identity, ordering, and storage attachment. Replication, leader election, backups, and database-level failover are still separate concerns.
+
+```mermaid
+flowchart TD
+  STS[StatefulSet postgres] --> P0[postgres-0]
+  STS --> P1[postgres-1]
+  SVC[Headless Service postgres] --> DNS0[stable DNS for postgres-0]
+  SVC --> DNS1[stable DNS for postgres-1]
+  P0 --> PVC0[data-postgres-0]
+  P1 --> PVC1[data-postgres-1]
+  PVC0 --> Disk0[persistent disk 0]
+  PVC1 --> Disk1[persistent disk 1]
+```
+
+---
+
 ## What you are going to do
 
 A Deployment gives you interchangeable replicas with random pod suffixes. That is perfect for web services.

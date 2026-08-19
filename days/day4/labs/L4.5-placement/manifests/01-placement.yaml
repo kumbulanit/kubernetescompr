@@ -1,3 +1,13 @@
+# ==============================================================================
+# L4.5 — Scheduler placement rules
+# ==============================================================================
+# This lab adds affinity, anti-affinity, and topology spread rules to show
+# how Kubernetes can influence where replicas land.
+#
+# Students should watch for the difference between hard rules that block
+# scheduling and soft preferences that the scheduler tries to satisfy when
+# it can.
+# ==============================================================================
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -9,25 +19,30 @@ spec:
       affinity:
         podAntiAffinity:
           requiredDuringSchedulingIgnoredDuringExecution:
-          - topologyKey: kubernetes.io/hostname
-            labelSelector:
-              matchLabels:
-                app.kubernetes.io/name: payment-service
-        podAffinity:
-          preferredDuringSchedulingIgnoredDuringExecution:
-          - weight: 50
-            podAffinityTerm:
-              topologyKey: kubernetes.io/hostname
+            - topologyKey: kubernetes.io/hostname
+              # Never place two payment-service replicas on the same node.
               labelSelector:
                 matchLabels:
-                  app.kubernetes.io/name: fraud-service
+                  app.kubernetes.io/name: payment-service
+        podAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 50
+              podAffinityTerm:
+                # Prefer to co-locate with fraud-service on the same node,
+                # which can reduce hop latency, but do not require it.
+                topologyKey: kubernetes.io/hostname
+                labelSelector:
+                  matchLabels:
+                    app.kubernetes.io/name: fraud-service
       topologySpreadConstraints:
-      - maxSkew: 1
-        topologyKey: kubernetes.io/hostname
-        whenUnsatisfiable: DoNotSchedule
-        labelSelector:
-          matchLabels:
-            app.kubernetes.io/name: payment-service
+        - maxSkew: 1
+          # Spread across hostnames means spread across nodes in this lab.
+          topologyKey: kubernetes.io/hostname
+          # If an even spread is impossible, do not schedule the extra pod.
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: payment-service
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -40,16 +55,19 @@ spec:
       affinity:
         podAntiAffinity:
           preferredDuringSchedulingIgnoredDuringExecution:
-          - weight: 100
-            podAffinityTerm:
-              topologyKey: kubernetes.io/hostname
-              labelSelector:
-                matchLabels:
-                  app.kubernetes.io/name: fraud-service
+            - weight: 100
+              podAffinityTerm:
+                # This is only a preference, so the scheduler may still put
+                # replicas together if the cluster is small or busy.
+                topologyKey: kubernetes.io/hostname
+                labelSelector:
+                  matchLabels:
+                    app.kubernetes.io/name: fraud-service
       topologySpreadConstraints:
-      - maxSkew: 2
-        topologyKey: kubernetes.io/hostname
-        whenUnsatisfiable: ScheduleAnyway
-        labelSelector:
-          matchLabels:
-            app.kubernetes.io/name: fraud-service
+        - maxSkew: 2
+          topologyKey: kubernetes.io/hostname
+          # ScheduleAnyway keeps progress moving even if the spread is imperfect.
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: fraud-service

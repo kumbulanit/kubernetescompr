@@ -1,9 +1,21 @@
+# ==============================================================================
+# INC-3 — Storage and config
+# ==============================================================================
+# This incident manifest carries the same PostgreSQL bootstrap schema used by the Day 3
+# data tier, so students can reason about config delivery while troubleshooting.
+#
+# The important thing to notice is that application startup can depend on mounted files
+# from a ConfigMap, not only on environment variables. If that wiring breaks, a database
+# may start differently from what the workload author expected.
+# ==============================================================================
 apiVersion: v1
 kind: ConfigMap
 metadata:
   name: postgres-init
   namespace: axispay-data
 data:
+  # The numeric prefix is deliberate: if more init scripts are added later,
+  # PostgreSQL runs them in filename order.
   01-schema.sql: "-- =============================================================================\n\
     -- AxisPay \u2014 database schema\n-- =============================================================================\n\
     -- PostgreSQL 17. Applied by an init container before any service starts (L3.6).\n\

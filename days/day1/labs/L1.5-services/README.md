@@ -21,6 +21,25 @@
 
 ---
 
+## What this concept means
+
+A **Service** gives a stable front door to a set of pods. Pods are replaceable and their IP addresses change whenever they restart, move node, or get rolled out, so other applications should not talk to pod IPs directly.
+
+Instead, Kubernetes puts a stable virtual IP and DNS name in front of the changing pods. For a Java developer, it is a bit like coding against one stable interface or load-balanced endpoint instead of hard-coding the address of one JVM instance.
+
+The Service keeps tracking pods by label, so the back-end members can change while callers keep using the same name. That is why Services are one of the core building blocks of in-cluster communication.
+
+```mermaid
+flowchart LR
+  C[Client pod] --> S[Service<br/>stable IP + DNS]
+  S --> P1[payment pod A]
+  S --> P2[payment pod B]
+  S --> P3[payment pod C]
+  P2 -. replaced .-> P4[new payment pod]
+```
+
+---
+
 ## What you are going to do
 
 Your pods work. But they have a problem you are about to see for yourself: **every pod gets a new IP address when it restarts.** In L1.4 you deleted a pod and a replacement appeared — with a different address. Anything that had written down the old one is now pointing at nothing.

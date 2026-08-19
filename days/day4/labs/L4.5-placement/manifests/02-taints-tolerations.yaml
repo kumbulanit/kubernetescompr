@@ -1,3 +1,13 @@
+# ==============================================================================
+# L4.5 — Taints, tolerations, and node selection
+# ==============================================================================
+# This lab pins payment-service to a PCI-labelled node and adds the matching
+# toleration required to pass a NoSchedule taint.
+#
+# The important distinction is that a toleration does not attract a pod to a
+# node by itself. It only says "this taint is allowed". The nodeSelector is
+# what actually asks for the PCI node.
+# ==============================================================================
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -7,9 +17,11 @@ spec:
   template:
     spec:
       tolerations:
-      - key: axispay.io/pci-zone
-        operator: Equal
-        value: cde
-        effect: NoSchedule
+        - key: axispay.io/pci-zone
+          operator: Equal
+          value: cde
+          # NoSchedule taints repel pods unless they explicitly tolerate them.
+          effect: NoSchedule
       nodeSelector:
+        # This is the hard placement rule: only nodes with this label qualify.
         axispay.io/pci-zone: cde

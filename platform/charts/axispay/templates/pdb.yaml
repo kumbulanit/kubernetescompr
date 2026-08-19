@@ -1,5 +1,5 @@
 {{/*
-A PodDisruptionBudget constrains VOLUNTARY disruption only — drains, upgrades,
+L5.3 / L5.4 — A PodDisruptionBudget constrains VOLUNTARY disruption only — drains, upgrades,
 descheduling. It will not save you from a node that catches fire.
 
 maxUnavailable: 1 on a 2-replica service means a drain takes both pods down one
@@ -18,6 +18,7 @@ metadata:
   labels:
     {{- include "axispay.labels" $ | nindent 4 }}
 spec:
+  # This budget only affects voluntary actions such as node drains or upgrades.
   maxUnavailable: {{ $svc.pdb.maxUnavailable }}
   selector:
     matchLabels:

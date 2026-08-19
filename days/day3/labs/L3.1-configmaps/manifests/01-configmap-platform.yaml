@@ -1,14 +1,28 @@
+# ==============================================================================
+# L3.1 — ConfigMaps
+# ==============================================================================
+# This lab creates two ConfigMaps: one central bundle of non-secret platform
+# settings, and one rules file for the fraud service.
+#
+# The key idea to notice is that Kubernetes lets you move environment-specific
+# settings out of container images. The same image can be reused, while the
+# cluster injects the values that are different for training, test or prod.
+# ==============================================================================
 apiVersion: v1
 kind: ConfigMap
 metadata:
   name: axispay-platform-config
   namespace: axispay-core
 data:
+  # ConfigMap data is plain text. Kubernetes does not treat these values as secrets.
   ENVIRONMENT: training
   LOG_LEVEL: info
   DEFAULT_CURRENCY: ZAR
   SUPPORTED_CURRENCIES: ZAR,USD,EUR,GBP,NGN,KES,BWP
+  # Quoted because ConfigMap values are strings, even when they look numeric.
   DOWNSTREAM_TIMEOUT_SECONDS: '5.0'
+  # These service URLs use in-cluster DNS names, so services can find each other
+  # without hard-coding Pod IP addresses.
   AUTH_SERVICE_URL: http://auth-service.axispay-edge.svc.cluster.local:8080
   MERCHANT_SERVICE_URL: http://merchant-service.axispay-core.svc.cluster.local:8080
   PAYMENT_SERVICE_URL: http://payment-service.axispay-core.svc.cluster.local:8080
@@ -16,6 +30,8 @@ data:
   FRAUD_SERVICE_URL: http://fraud-service.axispay-core.svc.cluster.local:8080
   ROUTING_SERVICE_URL: http://routing-service.axispay-core.svc.cluster.local:8080
   LEDGER_SERVICE_URL: http://ledger-service.axispay-core.svc.cluster.local:8080
+  # postgres-0 / redis-0 / rabbitmq-0 are stable StatefulSet Pod names, which is
+  # why the config points at a specific DNS name instead of a random Pod IP.
   POSTGRES_HOST: postgres-0.postgres.axispay-data.svc.cluster.local
   POSTGRES_PORT: '5432'
   POSTGRES_DB: axispay
@@ -30,7 +46,20 @@ metadata:
   name: axispay-fraud-rules
   namespace: axispay-core
 data:
-  fraud-rules.yaml: "velocity:\n  window_seconds: 300\n  thresholds:\n    - { attempts:\
-    \ 3,  score: 8 }\n    - { attempts: 5,  score: 22 }\n    - { attempts: 9,  score:\
-    \ 45 }\ndecision:\n  review_at: 45\n  decline_at: 75\namount_deviation:\n  above_typical_x3:\
-    \ 10\n  above_typical_x6: 25\ngeography:\n  cross_border_penalty: 12\n"
+  # The key name ends with .yaml because this ConfigMap can be mounted like a real
+  # config file inside a container, not just consumed as environment variables.
+  fraud-rules.yaml: |
+    velocity:
+      window_seconds: 300
+      thresholds:
+        - { attempts: 3, score: 8 }
+        - { attempts: 5, score: 22 }
+        - { attempts: 9, score: 45 }
+    decision:
+      review_at: 45
+      decline_at: 75
+    amount_deviation:
+      above_typical_x3: 10
+      above_typical_x6: 25
+    geography:
+      cross_border_penalty: 12

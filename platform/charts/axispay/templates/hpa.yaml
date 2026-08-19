@@ -1,5 +1,5 @@
 {{/*
-An HPA only exists for the two services whose load is genuinely spiky.
+L5.3 / L5.4 — HPAs for the services whose load is genuinely spiky.
 Autoscaling a service that is never the bottleneck adds a failure mode and
 buys nothing.
 
@@ -24,6 +24,7 @@ spec:
   minReplicas: {{ $svc.hpa.minReplicas }}
   maxReplicas: {{ $svc.hpa.maxReplicas }}
   metrics:
+    # This tells the HPA WHICH signal to watch and WHAT target it should aim for.
     - type: Resource
       resource:
         name: cpu

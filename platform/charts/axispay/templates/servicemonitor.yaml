@@ -1,5 +1,5 @@
 {{/*
-ServiceMonitor is a CRD owned by the Prometheus Operator. If the operator is
+L5.3 / L5.5 — ServiceMonitor is a CRD owned by the Prometheus Operator. If the operator is
 not installed the object applies cleanly and does nothing at all — which is a
 confusing failure mode, so the guard below turns the whole block off rather
 than leaving orphaned CRs behind.
@@ -27,6 +27,7 @@ spec:
     matchLabels:
       app.kubernetes.io/part-of: axispay
   endpoints:
+    # This endpoint definition becomes the actual Prometheus scrape job.
     - port: http
       path: {{ $.Values.observability.serviceMonitor.path }}
       interval: {{ $.Values.observability.serviceMonitor.interval }}

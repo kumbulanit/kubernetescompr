@@ -1,5 +1,5 @@
 # ==============================================================================
-# SLIM — the classroom fallback for a constrained laptop (Profile B)
+# L5.3 / L5.4 — SLIM override values
 # ==============================================================================
 # Use when `kubectl get pods -A` shows Pending pods with "Insufficient cpu"
 # and the room cannot proceed:

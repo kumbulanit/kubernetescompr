@@ -21,6 +21,34 @@
 
 ---
 
+## What this concept means
+
+A **Namespace** is a way to divide one cluster into smaller named areas. It is a little like giving several Java applications separate packages, config scopes, and ownership boundaries inside the same platform, instead of throwing every object into one giant shared room.
+
+Kubernetes needs this because real clusters serve more than one thing at a time: different teams, environments, or parts of one system. Names are usually unique **within a namespace**, so you can have clear local naming without every object in the whole cluster competing for one global name.
+
+Namespaces also shape how other features behave. DNS uses the namespace as part of a service's full name, and RBAC rules are often written to grant access within one namespace rather than the whole cluster. They organise and scope things well — but by themselves they are not a network firewall.
+
+```mermaid
+flowchart TB
+  subgraph Cluster
+    subgraph Edge[Namespace: axispay-edge]
+      E[edge-gateway]
+    end
+    subgraph Core[Namespace: axispay-core]
+      P[payment-service]
+      M[merchant-service]
+    end
+    subgraph Async[Namespace: axispay-async]
+      Q[queue-worker]
+    end
+  end
+  P --> D1[payment-service.axispay-core.svc]
+  E --> D2[RBAC can be scoped<br/>to one namespace]
+```
+
+---
+
 ## What you are going to do
 
 Right now your cluster has nowhere to put AxisPay. Everything you create would land in a namespace called `default`, mixed in with everything else.

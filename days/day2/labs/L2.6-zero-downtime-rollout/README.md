@@ -21,6 +21,24 @@
 
 ---
 
+## What this concept means
+
+A **rolling update** replaces pods a few at a time instead of deleting everything and starting again. That is how Kubernetes can move a live service from one version to another while traffic keeps flowing. In a payment platform, this matters because even a few dropped requests can become failed checkouts, duplicate retries, or merchant trust issues.
+
+Two settings control the rhythm. **`maxSurge`** says how many extra new pods Kubernetes may add above the normal replica count during the rollout. **`maxUnavailable`** says how many old pods may be unavailable at once. In Java terms, it is like swapping application instances behind a load balancer while carefully controlling whether you add capacity first or remove capacity first.
+
+Zero downtime is not just "do a rollout". It depends on the rollout strategy, readiness, and graceful shutdown all lining up so old pods stop taking traffic only after new ones are truly ready.
+
+```mermaid
+flowchart LR
+  O1[Old pods serving traffic] --> N1[Start 1 new pod<br/>maxSurge]
+  N1 --> R[New pod becomes ready]
+  R --> X[Remove 1 old pod<br/>maxUnavailable]
+  X --> O2[Repeat until all pods are new version]
+```
+
+---
+
 ## What you are going to do
 
 You will upgrade `payment-service` from 1.0.0 to 1.1.0 **while real payments are going through it**, and prove afterwards that not one request failed.

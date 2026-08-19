@@ -21,6 +21,25 @@
 
 ---
 
+## What this concept means
+
+A **Deployment** is Kubernetes' way to store your intent for a stateless application: which pod template to run, and how many copies should exist. Instead of saying "start three now", you declare "there should be three", and Kubernetes keeps working to make that true.
+
+That is the start of the **reconciliation loop** idea. The cluster keeps comparing the desired state in the Deployment with the real state in the running pods, then creates, removes, or replaces pods to close the gap. Think of it less like clicking "start" on an app server, and more like a background manager that never stops checking.
+
+This section is just the short definition; the deeper mental model appears later in the lab.
+
+```mermaid
+flowchart LR
+  D[Deployment<br/>replicas: 3] --> R[Controller compares<br/>intent vs reality]
+  R --> P1[Pod]
+  R --> P2[Pod]
+  R --> P3[Pod]
+  P2 -. deleted .-> R
+```
+
+---
+
 ## What you are going to do
 
 In L1.3 you created a pod, deleted it, and nothing brought it back.

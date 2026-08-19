@@ -1,3 +1,13 @@
+# ==============================================================================
+# L4.4 — NetworkPolicy rules for traffic INTO core services
+# ==============================================================================
+# This file allows only the core inbound paths the application actually
+# needs: edge -> core, core -> core, and selected async -> core reads.
+#
+# The main thing to notice is that `podSelector` chooses the pods being
+# protected, while each `from` block describes who is allowed to talk to
+# them. No matching rule means the packet is dropped.
+# ==============================================================================
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -5,21 +15,23 @@ metadata:
   namespace: axispay-core
 spec:
   podSelector:
+    # This policy protects payment-service pods only.
     matchLabels:
       app.kubernetes.io/name: payment-service
   policyTypes:
-  - Ingress
+    - Ingress
   ingress:
-  - from:
-    - namespaceSelector:
-        matchLabels:
-          axispay.io/zone: edge
-      podSelector:
-        matchLabels:
-          app.kubernetes.io/name: edge-gateway
-    ports:
-    - protocol: TCP
-      port: 8080
+    - from:
+        - namespaceSelector:
+            # Namespace + pod selectors together mean AND, not OR.
+            matchLabels:
+              axispay.io/zone: edge
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: edge-gateway
+      ports:
+        - protocol: TCP
+          port: 8080
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -31,35 +43,36 @@ spec:
     matchLabels:
       app.kubernetes.io/name: merchant-service
   policyTypes:
-  - Ingress
+    - Ingress
   ingress:
-  - from:
-    - namespaceSelector:
-        matchLabels:
-          axispay.io/zone: edge
-      podSelector:
-        matchLabels:
-          app.kubernetes.io/name: edge-gateway
-    ports:
-    - protocol: TCP
-      port: 8080
-  - from:
-    - podSelector:
-        matchLabels:
-          app.kubernetes.io/name: payment-service
-    ports:
-    - protocol: TCP
-      port: 8080
-  - from:
-    - namespaceSelector:
-        matchLabels:
-          axispay.io/zone: async
-      podSelector:
-        matchLabels:
-          app.kubernetes.io/name: notification-service
-    ports:
-    - protocol: TCP
-      port: 8080
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              axispay.io/zone: edge
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: edge-gateway
+      ports:
+        - protocol: TCP
+          port: 8080
+    - from:
+        - podSelector:
+            # With no namespaceSelector, this means pods in axispay-core.
+            matchLabels:
+              app.kubernetes.io/name: payment-service
+      ports:
+        - protocol: TCP
+          port: 8080
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              axispay.io/zone: async
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: notification-service
+      ports:
+        - protocol: TCP
+          port: 8080
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -68,24 +81,25 @@ metadata:
   namespace: axispay-core
 spec:
   podSelector:
+    # One policy can target several workloads with a match expression.
     matchExpressions:
-    - key: app.kubernetes.io/name
-      operator: In
-      values:
-      - fraud-service
-      - routing-service
-      - ledger-service
-      - customer-service
+      - key: app.kubernetes.io/name
+        operator: In
+        values:
+          - fraud-service
+          - routing-service
+          - ledger-service
+          - customer-service
   policyTypes:
-  - Ingress
+    - Ingress
   ingress:
-  - from:
-    - podSelector:
-        matchLabels:
-          app.kubernetes.io/name: payment-service
-    ports:
-    - protocol: TCP
-      port: 8080
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: payment-service
+      ports:
+        - protocol: TCP
+          port: 8080
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -97,20 +111,20 @@ spec:
     matchLabels:
       app.kubernetes.io/name: payment-service
   policyTypes:
-  - Ingress
+    - Ingress
   ingress:
-  - from:
-    - namespaceSelector:
-        matchLabels:
-          axispay.io/zone: async
-      podSelector:
-        matchExpressions:
-        - key: app.kubernetes.io/name
-          operator: In
-          values:
-          - settlement-service
-          - reporting-service
-          - recon-worker
-    ports:
-    - protocol: TCP
-      port: 8080
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              axispay.io/zone: async
+          podSelector:
+            matchExpressions:
+              - key: app.kubernetes.io/name
+                operator: In
+                values:
+                  - settlement-service
+                  - reporting-service
+                  - recon-worker
+      ports:
+        - protocol: TCP
+          port: 8080

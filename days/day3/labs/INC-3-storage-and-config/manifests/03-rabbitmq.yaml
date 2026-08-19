@@ -1,3 +1,12 @@
+# ==============================================================================
+# INC-3 — Storage and config
+# ==============================================================================
+# This manifest recreates the RabbitMQ broker involved in the storage/config incident.
+#
+# It matters because brokers can fail for reasons that look unrelated at first glance:
+# missing credentials, bad storage, or a Pod that never becomes ready even though the
+# container process started.
+# ==============================================================================
 apiVersion: v1
 kind: Service
 metadata:

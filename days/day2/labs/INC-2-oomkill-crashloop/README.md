@@ -21,6 +21,25 @@
 
 ---
 
+## What this concept means
+
+**OOMKilled** means a container used more memory than its limit and the kernel terminated it. Kubernetes did not politely stop the app; the operating system killed it because the process crossed a hard memory boundary. For a Java developer, this is the container equivalent of giving the JVM too little headroom and watching the process die when memory pressure spikes.
+
+**CrashLoopBackOff** is what happens next when Kubernetes keeps trying to restart a container that does not stay up. The pod is not a different kind of failure; it is Kubernetes backing off between restart attempts so it does not hammer the node endlessly.
+
+This is one of the most common production incidents because the symptoms are misleading. A pod may start, serve a little traffic, die, restart, and repeat — so from the outside the service can look flaky rather than obviously broken.
+
+```mermaid
+flowchart LR
+  A[Container exceeds<br/>memory limit] --> K[Kernel kills process<br/>OOMKilled]
+  K --> RS[Kubernetes restarts container]
+  RS --> F[Container fails again]
+  F --> B[CrashLoopBackOff<br/>wait longer before retry]
+  B --> RS
+```
+
+---
+
 ## Read this before you start
 
 Something is broken. **You will not be told what.**

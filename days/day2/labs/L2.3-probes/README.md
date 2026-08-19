@@ -23,6 +23,27 @@
 
 ---
 
+## What this concept means
+
+Kubernetes can see that a container process exists, but it cannot know what "healthy" means for your application unless you teach it. That is why probes exist. They are just small checks, usually HTTP endpoints, that tell Kubernetes whether the app has started, whether it is still functioning, and whether it should receive traffic.
+
+The key distinction is **alive** versus **ready**. A Java service may be running, with a JVM process and open port, but still not be ready because it has not finished warming caches or cannot reach its database. **Liveness** answers "would a restart help?"; **readiness** answers "should requests be sent here right now?"; **startup** protects slow boots by delaying liveness until startup is complete.
+
+If you do not define probes, Kubernetes falls back to a very weak signal: the process has not exited yet. That is not enough for real systems, because a hung or half-started service can still look alive from the outside.
+
+```mermaid
+flowchart LR
+  K[Kubernetes] --> SP[startup probe]
+  K --> LP[liveness probe]
+  K --> RP[readiness probe]
+  SP -->|passes| LP
+  LP -->|fails| R[Restart container]
+  RP -->|fails| T[Remove pod from Service traffic]
+  RP -->|passes| S[Send requests to pod]
+```
+
+---
+
 ## What you are going to do
 
 Your services have no health checks. That means Kubernetes has exactly one way to judge them: **is the process still running?** A process that is running but wedged, or running but unable to reach its database, looks perfectly healthy — and keeps receiving traffic.

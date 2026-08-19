@@ -1,10 +1,19 @@
+# ==============================================================================
+# L3.5 — Data tier
+# ==============================================================================
+# This manifest creates Redis as a StatefulSet with persistent storage.
+#
+# The interesting part for students is that even a "cache" often still needs some
+# stateful behaviour: a stable identity, a password, and disk if you want restart
+# survival instead of losing everything on every Pod recreation.
+# ==============================================================================
 apiVersion: v1
 kind: Service
 metadata:
   name: redis
   namespace: axispay-data
 spec:
-  clusterIP: None
+  clusterIP: None  # Headless so redis-0 gets a predictable DNS name.
   selector:
     app.kubernetes.io/name: redis
     app.kubernetes.io/instance: axispay
@@ -49,11 +58,13 @@ spec:
         - redis-server
         - --requirepass
         - $(REDIS_PASSWORD)
+        # Append-only mode writes changes to disk, so a restart does not wipe the cache completely.
         - --appendonly
         - 'yes'
         - --maxmemory
         - 192mb
         - --maxmemory-policy
+        # When memory fills up, Redis evicts the least recently used keys instead of crashing.
         - allkeys-lru
         ports:
         - name: redis
@@ -91,6 +102,7 @@ spec:
             command:
             - sh
             - -c
+            # Using the same authenticated ping here proves the Secret wiring works too.
             - redis-cli -a "$REDIS_PASSWORD" ping | grep -q PONG
           periodSeconds: 10
         volumeMounts:

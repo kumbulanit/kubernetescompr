@@ -21,6 +21,23 @@
 
 ---
 
+## What this concept means
+
+Not every application shape is "keep N identical servers running forever". A **Deployment** is for long-running stateless services, like a Spring Boot API behind a Service. A **Job** is for work that should run, finish, and stop. A **CronJob** is the scheduled version of a Job: "run this batch at a particular time."
+
+A useful Java analogy is web tier versus batch tier. Your checkout API belongs in a Deployment because success means staying available. A reconciliation task belongs in a Job because success means exiting cleanly with the work complete. End-of-day settlement belongs in a CronJob because the same finite task must happen on a schedule.
+
+Choosing the wrong workload type teaches Kubernetes the wrong definition of success. If you run a one-off batch as a Deployment, Kubernetes will try to restart it forever because it thinks exiting is failure.
+
+```mermaid
+flowchart TD
+  W[What kind of work is it?] --> D[Deployment<br/>long-running service]
+  W --> J[Job<br/>run once to completion]
+  W --> C[CronJob<br/>run Job on a schedule]
+```
+
+---
+
 ## What you are going to do
 
 Everything you have deployed so far is a Deployment: a long-running server, with interchangeable replicas. Plenty of real work is not shaped like that.

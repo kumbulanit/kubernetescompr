@@ -1,9 +1,21 @@
+# ==============================================================================
+# L3.5 — Data tier
+# ==============================================================================
+# This manifest packages the PostgreSQL schema as a ConfigMap so the database can
+# initialise itself the first time its volume is empty.
+#
+# The useful thing to notice is that Kubernetes can deliver more than small env vars.
+# A ConfigMap key can behave like a file, which is why the SQL script is stored under
+# a filename-like key and later mounted into PostgreSQL's init directory.
+# ==============================================================================
 apiVersion: v1
 kind: ConfigMap
 metadata:
   name: postgres-init
   namespace: axispay-data
 data:
+  # The numeric prefix is deliberate: if more init scripts are added later,
+  # PostgreSQL runs them in filename order.
   01-schema.sql: "-- =============================================================================\n\
     -- AxisPay \u2014 database schema\n-- =============================================================================\n\
     -- PostgreSQL 17. Applied by an init container before any service starts (L3.6).\n\

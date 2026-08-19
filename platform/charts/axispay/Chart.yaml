@@ -1,3 +1,12 @@
+# ==============================================================================
+# L5.3 / L5.4 — Helm chart metadata for AxisPay
+# ==============================================================================
+# This file is the chart's identity card: Helm reads it to know what package is
+# being installed and which version of that package it is.
+#
+# Notice chart version vs appVersion. `version` tracks the Helm package itself;
+# `appVersion` is the default application version the chart describes.
+# ==============================================================================
 apiVersion: v2
 name: axispay
 description: >-

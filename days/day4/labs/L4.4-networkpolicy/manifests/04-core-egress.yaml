@@ -1,3 +1,13 @@
+# ==============================================================================
+# L4.4 — NetworkPolicy rules for traffic LEAVING core services
+# ==============================================================================
+# These policies document the outbound calls core services are allowed to
+# make after egress is locked down.
+#
+# This matters because many "the app is broken" symptoms are really blocked
+# dependencies: database ports, broker ports, or internal HTTP calls that no
+# longer have an allow rule.
+# ==============================================================================
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -5,29 +15,31 @@ metadata:
   namespace: axispay-core
 spec:
   podSelector:
+    # Only these workloads may open connections into the data zone.
     matchExpressions:
-    - key: app.kubernetes.io/name
-      operator: In
-      values:
-      - payment-service
-      - ledger-service
-      - customer-service
-      - merchant-service
-      - fraud-service
+      - key: app.kubernetes.io/name
+        operator: In
+        values:
+          - payment-service
+          - ledger-service
+          - customer-service
+          - merchant-service
+          - fraud-service
   policyTypes:
-  - Egress
+    - Egress
   egress:
-  - to:
-    - namespaceSelector:
-        matchLabels:
-          axispay.io/zone: data
-    ports:
-    - protocol: TCP
-      port: 5432
-    - protocol: TCP
-      port: 6379
-    - protocol: TCP
-      port: 5672
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              axispay.io/zone: data
+      ports:
+        # PostgreSQL, Redis, and RabbitMQ.
+        - protocol: TCP
+          port: 5432
+        - protocol: TCP
+          port: 6379
+        - protocol: TCP
+          port: 5672
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -36,22 +48,24 @@ metadata:
   namespace: axispay-core
 spec:
   podSelector:
+    # This one is narrower: it applies only to payment-service pods.
     matchLabels:
       app.kubernetes.io/name: payment-service
   policyTypes:
-  - Egress
+    - Egress
   egress:
-  - to:
-    - podSelector:
-        matchExpressions:
-        - key: app.kubernetes.io/name
-          operator: In
-          values:
-          - merchant-service
-          - fraud-service
-          - routing-service
-          - ledger-service
-          - customer-service
-    ports:
-    - protocol: TCP
-      port: 8080
+    - to:
+        - podSelector:
+            # No namespaceSelector here means "other pods in axispay-core".
+            matchExpressions:
+              - key: app.kubernetes.io/name
+                operator: In
+                values:
+                  - merchant-service
+                  - fraud-service
+                  - routing-service
+                  - ledger-service
+                  - customer-service
+      ports:
+        - protocol: TCP
+          port: 8080

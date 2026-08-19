@@ -1,5 +1,5 @@
 {{/*
-Alerts on SYMPTOMS the merchant can feel, not on causes.
+L5.3 / L5.6 — Alerts on SYMPTOMS the merchant can feel, not on causes.
 
 "CPU is high" is not an alert — it is a fact that may or may not matter.
 "One in two hundred payments is failing" always matters. Every rule below
@@ -19,6 +19,7 @@ metadata:
     {{- include "axispay.labels" . | nindent 4 }}
     release: kube-prometheus-stack
 spec:
+  # Prometheus evaluates groups independently, which keeps related rules together and readable.
   groups:
     - name: axispay.availability
       interval: 30s

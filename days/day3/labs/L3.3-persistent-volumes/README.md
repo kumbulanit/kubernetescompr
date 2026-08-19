@@ -20,6 +20,24 @@
 
 ---
 
+## What this concept means
+
+A `PersistentVolume` (PV) is the actual storage object in the cluster, and a `PersistentVolumeClaim` (PVC) is the application's request for storage. Think of the PVC as an order form and the PV as the real disk that satisfies it. The application does not need to know where the disk lives or how it was prepared.
+
+Binding is Kubernetes matching the request to a volume that fits. Size, access mode, and storage class all have to line up before the PVC becomes `Bound`. Once that happens, pods can mount the claim and use the storage.
+
+Pods use a claim instead of pointing directly at a PV because that keeps the workload decoupled from storage details. The app says "I need 1Gi of `ReadWriteOnce` storage," while the platform decides which volume should provide it. That separation is what makes storage reusable, replaceable, and safer to manage.
+
+```mermaid
+flowchart LR
+  Pod[Pod] --> PVC[PersistentVolumeClaim<br/>ledger-archive]
+  PVC -->|request matches| PV[PersistentVolume<br/>axispay-ledger-archive]
+  PV --> Disk[real storage<br/>/mnt/axispay/ledger-archive]
+  PVC -. asks for size/access/storageClass .-> PV
+```
+
+---
+
 ## What you are going to do
 
 Here you create the classic Kubernetes storage chain:

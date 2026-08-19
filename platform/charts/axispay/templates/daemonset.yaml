@@ -1,5 +1,5 @@
 {{/*
-node-agent is a DaemonSet, not a Deployment with replicas: 3.
+L5.3 / L5.6 — node-agent is a DaemonSet, not a Deployment with replicas: 3.
 The difference matters the moment someone adds a node: a DaemonSet covers it
 automatically, a Deployment does not. It also tolerates the control-plane taint
 because node telemetry with a hole in it is not telemetry.
@@ -31,6 +31,7 @@ spec:
         {{- include "axispay.selectorLabels" (dict "root" $ "name" $name) | nindent 8 }}
     spec:
       serviceAccountName: {{ $name }}
+      # Node-facing agents often need an API token; most application pods do not.
       automountServiceAccountToken: {{ $ds.automountToken | default false }}
       {{- if $ds.tolerateControlPlane }}
       tolerations:

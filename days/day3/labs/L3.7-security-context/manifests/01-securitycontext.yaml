@@ -1,15 +1,32 @@
+# ==============================================================================
+# L3.7 — Security context
+# ==============================================================================
+# This ConfigMap stores example pod-level and container-level securityContext
+# snippets that students can inspect and reuse in the lab.
+#
+# The key thing to notice is that Kubernetes security settings are layered: some
+# belong to the whole Pod, while others belong to each container inside it.
+# ==============================================================================
 apiVersion: v1
 kind: ConfigMap
 metadata:
   name: axispay-security-baseline
   namespace: axispay-core
 data:
-  pod-security-context.yaml: "securityContext:\n  runAsNonRoot: true            #\
-    \ kubelet REFUSES to start the pod if the\n  runAsUser: 10001\n  runAsGroup: 10001\n\
-    \  fsGroup: 10001                # chown mounted volumes so a non-root\n  seccompProfile:\n\
-    \    type: RuntimeDefault        # block ~44 dangerous syscalls\n"
-  container-security-context.yaml: "securityContext:\n  allowPrivilegeEscalation:\
-    \ false   # blocks setuid binaries from gaining\n  readOnlyRootFilesystem: true\
-    \      # a compromised process cannot write a\n  capabilities:\n    drop: [\"\
-    ALL\"]                   # containers get ~14 caps by default,\n  privileged:\
-    \ false\n"
+  # Pod-level settings apply to every container unless a container overrides them.
+  pod-security-context.yaml: |
+    securityContext:
+      runAsNonRoot: true            # kubelet REFUSES to start the pod if the image needs root
+      runAsUser: 10001
+      runAsGroup: 10001
+      fsGroup: 10001                # chown mounted volumes so a non-root process can write
+      seccompProfile:
+        type: RuntimeDefault        # block a large set of risky syscalls by default
+  # Container-level settings narrow what a single process can do inside the Pod.
+  container-security-context.yaml: |
+    securityContext:
+      allowPrivilegeEscalation: false   # blocks setuid binaries from gaining more power
+      readOnlyRootFilesystem: true      # a compromised process cannot write into the image layer
+      capabilities:
+        drop: ["ALL"]                   # containers get extra Linux capabilities unless you drop them
+      privileged: false

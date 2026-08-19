@@ -1,10 +1,22 @@
+# ==============================================================================
+# L4.3 — Ingress and TLS
+# ==============================================================================
+# This lab creates TLS material for the API entrypoint and two Ingress
+# objects that route HTTP requests to Services inside the cluster.
+#
+# Students should notice the split of responsibilities: the Ingress decides
+# which host/path goes where, while the backing Service still decides which
+# pods receive the traffic.
+# ==============================================================================
 apiVersion: v1
 kind: Secret
 metadata:
   name: axispay-tls
   namespace: axispay-edge
+# This special Secret type tells Kubernetes to expect a certificate/key pair.
 type: kubernetes.io/tls
 stringData:
+  # The training scripts replace these placeholders with generated local certs.
   tls.crt: PLACEHOLDER-generated-by-scripts/setup/06-generate-tls.sh
   tls.key: PLACEHOLDER-generated-by-scripts/setup/06-generate-tls.sh
 ---
@@ -14,22 +26,27 @@ metadata:
   name: axispay-api
   namespace: axispay-edge
 spec:
+  # The cluster can have multiple controllers; this targets the nginx one.
   ingressClassName: nginx
   tls:
-  - hosts:
-    - api.axispay.local
-    secretName: axispay-tls
+    - hosts:
+        # When a request arrives for this host, terminate TLS with the
+        # certificate stored in the Secret below.
+        - api.axispay.local
+      secretName: axispay-tls
   rules:
-  - host: api.axispay.local
-    http:
-      paths:
-      - path: /api/v1
-        pathType: Prefix
-        backend:
-          service:
-            name: edge-gateway
-            port:
-              name: http
+    - host: api.axispay.local
+      http:
+        paths:
+          - path: /api/v1
+            # Prefix means /api/v1 and everything under it matches here.
+            pathType: Prefix
+            backend:
+              service:
+                # After host/path matching, forward to this Service.
+                name: edge-gateway
+                port:
+                  name: http
 ---
 apiVersion: networking.k8s.io/v1
 kind: Ingress
@@ -39,17 +56,18 @@ metadata:
 spec:
   ingressClassName: nginx
   tls:
-  - hosts:
-    - portal.axispay.local
-    secretName: axispay-portal-tls
+    - hosts:
+        - portal.axispay.local
+      # This Secret must exist in the SAME namespace as the Ingress.
+      secretName: axispay-portal-tls
   rules:
-  - host: portal.axispay.local
-    http:
-      paths:
-      - path: /api/v1/reports
-        pathType: Prefix
-        backend:
-          service:
-            name: reporting-service
-            port:
-              name: http
+    - host: portal.axispay.local
+      http:
+        paths:
+          - path: /api/v1/reports
+            pathType: Prefix
+            backend:
+              service:
+                name: reporting-service
+                port:
+                  name: http

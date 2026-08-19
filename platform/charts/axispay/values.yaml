@@ -1,5 +1,5 @@
 # ==============================================================================
-# AxisPay — default values
+# L5.3 / L5.4 — AxisPay chart default values
 # ==============================================================================
 # These defaults are DEVELOPMENT-SAFE, not production-safe. Every environment
 # file (values-dev / values-staging / values-prod) overrides what it needs.
@@ -11,6 +11,7 @@
 # ==============================================================================
 
 global:
+  # These globals flow into many templates; change them once here instead of in fifteen manifests.
   image:
     registry: ""              # empty = built locally into the Minikube runtime
     repository: axispay
@@ -35,12 +36,14 @@ podDisruptionBudget:
 podSecurity:
   enforce: restricted
 serviceAccount:
+  # create=false is the escape hatch if another team wants to supply identities outside the chart.
   create: true
   automountToken: false       # only prometheus and node-agent need a token
 
 # ---- security baseline applied to EVERY service ------------------------------
 securityContext:
   pod:
+    # Pod-level security applies to every container in the pod before any container-specific settings.
     runAsNonRoot: true
     runAsUser: 10001
     runAsGroup: 10001

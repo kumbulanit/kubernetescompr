@@ -26,6 +26,29 @@ The full version, including how to install everything, is in [`labs/GETTING-STAR
 
 ---
 
+## What this concept means
+
+A Kubernetes cluster is not one machine. It is a small distributed system: the **control plane** is the management side that stores the truth and accepts API requests, and the **worker nodes** are the machines that actually run your pods. For a Java developer, think of it as the difference between the platform control console and the JVM hosts that run your services.
+
+`kubectl` is just a **client**. It reads your kubeconfig, makes HTTPS requests to the cluster's **API server**, and prints the reply. In this lab, "reconnaissance" means read-only inspection: you are surveying the terrain before you deploy anything, the same way you would inspect logs, processes, and ports before changing a production server.
+
+That client-server shape matters because it explains almost everything else in Kubernetes: `kubectl` asks, the API server records and validates, and the cluster's components react from there.
+
+```mermaid
+flowchart LR
+  U[You at terminal] --> K[kubectl client]
+  K --> A[API server]
+  subgraph C[Cluster]
+    A --> CP[Control plane<br/>state + decisions]
+    CP --> W1[Worker node 1]
+    CP --> W2[Worker node 2]
+    CP --> W3[Worker node 3]
+  end
+  K -. recon queries .-> A
+```
+
+---
+
 ## What you are going to do
 
 You have a Kubernetes cluster running on your machine. Right now it is a black box.

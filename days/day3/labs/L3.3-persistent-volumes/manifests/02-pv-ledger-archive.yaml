@@ -1,3 +1,13 @@
+# ==============================================================================
+# L3.3 — Persistent Volumes
+# ==============================================================================
+# This lab creates a manually managed PersistentVolume and a matching
+# PersistentVolumeClaim for a ledger archive.
+#
+# Students should notice the split of responsibilities: a PV represents storage the
+# cluster knows about, while a PVC is what an application asks for. Kubernetes binds
+# the two when the access mode, class and requested size are compatible.
+# ==============================================================================
 apiVersion: v1
 kind: PersistentVolume
 metadata:
@@ -6,16 +16,21 @@ spec:
   capacity:
     storage: 2Gi
   accessModes:
-  - ReadWriteOnce
-  persistentVolumeReclaimPolicy: Retain
+  - ReadWriteOnce  # One node may mount it read/write at a time; common for block storage.
+  persistentVolumeReclaimPolicy: Retain  # Keep the data even if the claim is deleted.
+  # Using a manual class stops dynamic provisioning and makes this PV available only
+  # to claims that explicitly ask for axispay-manual.
   storageClassName: axispay-manual
   hostPath:
+    # hostPath is simple for a lab, but it ties the volume to a node's local disk.
     path: /mnt/axispay/ledger-archive
     type: DirectoryOrCreate
   nodeAffinity:
     required:
       nodeSelectorTerms:
       - matchExpressions:
+        # Because this is node-local storage, Kubernetes must schedule consumers onto
+        # the node that actually has the files.
         - key: kubernetes.io/hostname
           operator: In
           values:
@@ -32,4 +47,6 @@ spec:
   storageClassName: axispay-manual
   resources:
     requests:
+      # A claim may request less than the PV's full capacity; Kubernetes only requires
+      # the volume to be large enough, not exactly equal in size.
       storage: 1Gi

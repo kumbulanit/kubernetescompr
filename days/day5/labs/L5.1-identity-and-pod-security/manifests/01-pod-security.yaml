@@ -1,28 +1,45 @@
+# ==============================================================================
+# L5.1 — Namespace boundaries for Pod Security Admission
+# ==============================================================================
+# This lab starts by creating the namespaces that Day 5 workloads live in.
+# Pod Security Admission is applied at the NAMESPACE level, so this is the
+# object students later label to say "restricted here" or "privileged here".
+#
+# Notice the lesson: pod security is not a flag on one Deployment. It is a
+# namespace-wide contract that every pod in that namespace must satisfy.
+# ==============================================================================
+# Core payment workloads will later be held to the stricter policy.
 apiVersion: v1
 kind: Namespace
 metadata:
   name: axispay-core
 ---
+# Edge workloads are split out so their security and traffic rules stay separate.
 apiVersion: v1
 kind: Namespace
 metadata:
   name: axispay-edge
 ---
+# Async jobs and workers get their own namespace, even though they are part of the same platform.
 apiVersion: v1
 kind: Namespace
 metadata:
   name: axispay-async
 ---
+# The data tier is isolated because databases usually need different controls from stateless apps.
 apiVersion: v1
 kind: Namespace
 metadata:
   name: axispay-data
 ---
+# Ops tooling is separated so support components do not share permissions with the app.
 apiVersion: v1
 kind: Namespace
 metadata:
   name: axispay-ops
 ---
+# Observability often has documented exceptions (for example host-level log collectors),
+# so keeping it in its own namespace makes those exceptions explicit and reviewable.
 apiVersion: v1
 kind: Namespace
 metadata:
