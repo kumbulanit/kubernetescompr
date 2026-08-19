@@ -30,19 +30,8 @@ spec:
   persistentVolumeReclaimPolicy: Retain
   storageClassName: axispay-manual
   hostPath:
-    path: /mnt/axispay/ledger-archive
+    path: /tmp/axispay/ledger-archive
     type: DirectoryOrCreate
-  # On a multi-node cluster a hostPath volume exists on exactly ONE node. Without
-  # this affinity the scheduler may place the pod elsewhere and the mount fails
-  # (or worse, succeeds against an empty directory and the data appears to have
-  # vanished). This is taught deliberately in L3.6 — see the storage trap.
-  nodeAffinity:
-    required:
-      nodeSelectorTerms:
-        - matchExpressions:
-            - key: kubernetes.io/hostname
-              operator: In
-              values: ["axispay-m02"]
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim

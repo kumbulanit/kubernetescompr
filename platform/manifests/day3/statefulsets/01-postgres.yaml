@@ -136,7 +136,6 @@ spec:
           app.kubernetes.io/part-of: axispay
       spec:
         accessModes: [ReadWriteOnce]
-        storageClassName: axispay-standard
         resources:
           requests:
             storage: 5Gi

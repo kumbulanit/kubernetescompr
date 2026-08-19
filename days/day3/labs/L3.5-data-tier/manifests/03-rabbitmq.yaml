@@ -114,7 +114,6 @@ spec:
     spec:
       accessModes:
       - ReadWriteOnce
-      storageClassName: axispay-standard
       resources:
         requests:
           storage: 2Gi
