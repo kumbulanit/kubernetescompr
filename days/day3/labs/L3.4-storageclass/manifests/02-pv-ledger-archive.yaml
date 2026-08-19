@@ -19,16 +19,8 @@ spec:
   persistentVolumeReclaimPolicy: Retain
   storageClassName: axispay-manual  # Intentionally NOT axispay-standard: this volume is pre-created.
   hostPath:
-    path: /mnt/axispay/ledger-archive
+    path: /tmp/axispay/ledger-archive
     type: DirectoryOrCreate  # Handy in a lab: create the directory if it does not already exist.
-  nodeAffinity:
-    required:
-      nodeSelectorTerms:
-      - matchExpressions:
-        - key: kubernetes.io/hostname
-          operator: In
-          values:
-          - axispay-m02
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim

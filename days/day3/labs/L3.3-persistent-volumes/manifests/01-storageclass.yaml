@@ -13,7 +13,7 @@ kind: StorageClass
 metadata:
   name: axispay-standard
 # Minikube uses a simple hostPath provisioner so the labs work on one local cluster.
-provisioner: k8s.io/minikube-hostpath
+provisioner: kubernetes.io/no-provisioner
 # Retain keeps the underlying data around after the PVC is deleted, which is useful
 # in a training lab because students can inspect what happened instead of losing it.
 reclaimPolicy: Retain

@@ -14,7 +14,7 @@ metadata:
     axispay.io/day-introduced: "3"
   annotations:
     axispay.io/description: "Node-local storage for the training cluster"
-provisioner: k8s.io/minikube-hostpath
+provisioner: kubernetes.io/no-provisioner
 # RETAIN, not Delete. If a PVC holding the payments database is deleted — by a
 # careless `kubectl delete pvc`, or by deleting the namespace — Delete would
 # destroy the volume and the data with it. Retain keeps the PV and its contents

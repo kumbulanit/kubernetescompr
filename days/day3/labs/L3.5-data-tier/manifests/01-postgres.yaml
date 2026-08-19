@@ -130,7 +130,7 @@ spec:
     spec:
       accessModes:
       - ReadWriteOnce
-      storageClassName: axispay-standard  # Ask Kubernetes to provision storage from the Day 3 class.
+      storageClassName: ubuntu-local-storage
       resources:
         requests:
           storage: 5Gi
