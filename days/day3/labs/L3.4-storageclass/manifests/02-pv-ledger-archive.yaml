@@ -19,7 +19,7 @@ spec:
   persistentVolumeReclaimPolicy: Retain
   storageClassName: axispay-manual  # Intentionally NOT axispay-standard: this volume is pre-created.
   hostPath:
-    path: /tmp/axispay/ledger-archive
+    path: /mnt/axispay/ledger-archive
     type: DirectoryOrCreate  # Handy in a lab: create the directory if it does not already exist.
 ---
 apiVersion: v1

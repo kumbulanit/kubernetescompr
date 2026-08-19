@@ -23,7 +23,7 @@ spec:
   storageClassName: axispay-manual
   hostPath:
     # hostPath is simple for a lab, but it ties the volume to a node's local disk.
-    path: /tmp/axispay/ledger-archive
+    path: /mnt/axispay/ledger-archive
     type: DirectoryOrCreate
   nodeAffinity:
     required:

@@ -30,7 +30,7 @@ spec:
   persistentVolumeReclaimPolicy: Retain
   storageClassName: axispay-manual
   hostPath:
-    path: /tmp/axispay/ledger-archive
+    path: /mnt/axispay/ledger-archive
     type: DirectoryOrCreate
 ---
 apiVersion: v1

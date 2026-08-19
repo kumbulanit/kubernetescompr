@@ -123,6 +123,7 @@ spec:
     spec:
       accessModes:
       - ReadWriteOnce
+      # Use the host OS-backed Ubuntu local storage class.
       storageClassName: ubuntu-local-storage
       resources:
         requests:

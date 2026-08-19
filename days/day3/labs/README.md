@@ -51,6 +51,16 @@ Tips & tricks:
 - Simple aliases save time: `alias k=kubectl` and `alias kgp='kubectl get pods'` are enough for the whole day.
 - When a lab creates or changes workloads, keep one terminal running `kubectl get pods -w -n <namespace>` so you can see rollouts live.
 - If `apply` worked but the lab still fails, use `kubectl describe` on the pod, PVC, or StatefulSet before you restart anything.
+- If you see `Forbidden: updates to statefulset spec ...` or `field is immutable` after changing storage, delete the existing StatefulSet/PVC/PV objects and reapply the storage bootstrap first:
+
+```bash
+kubectl delete statefulset postgres redis rabbitmq -n axispay-data --ignore-not-found
+kubectl delete pvc -n axispay-data data-postgres-0 data-redis-0 data-rabbitmq-0 --ignore-not-found
+kubectl delete pv postgres-data-local redis-data-local rabbitmq-data-local --ignore-not-found
+kubectl delete storageclass ubuntu-local-storage --ignore-not-found
+kubectl apply -f ../00-namespaces.yaml
+kubectl apply -f ../00-ubuntu-local-storage.yaml
+```
 
 ---
 
