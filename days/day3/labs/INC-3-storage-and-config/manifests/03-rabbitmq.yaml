@@ -111,6 +111,7 @@ spec:
     spec:
       accessModes:
       - ReadWriteOnce
+      storageClassName: ubuntu-local-storage
       resources:
         requests:
           storage: 2Gi
