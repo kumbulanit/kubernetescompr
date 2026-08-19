@@ -46,6 +46,235 @@ Why this matters:
 - the templates keep cross-cutting settings consistent across many services
 - the values files are what make promotion possible later in the day
 
+## Example values file for a first install
+
+A ready-to-use example values file lives at `days/day5/labs/L5.3-helm-packaging/values.yaml`.
+
+This file is intentionally small and easy to read. It shows:
+
+- `global`: image, environment and shared runtime settings that affect every workload
+- `services.payment-service`: a concrete example of how a single service can be tuned with replicas, CPU/memory requests, autoscaling and environment variables
+- `services.edge-gateway`: an additional example of how the edge path can be configured
+- `ingress` and `observability`: the values that control routing and metrics wiring
+
+The easiest way to understand it is to read the comments in the file from top to bottom. Each section answers a simple question:
+
+- What is shared across the whole release?
+- What is specific to one service?
+- What should change when the app is promoted to another environment?
+
+Before you install anything, make sure Helm is available on your machine.
+
+On Ubuntu or Debian, you can install Helm with the official script:
+
+```bash
+curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+helm version
+```
+
+If you want to create a chart from scratch before using this repo's chart, you can do:
+
+```bash
+mkdir -p ~/helm-lab
+cd ~/helm-lab
+helm create demo-app
+```
+
+That creates a standard chart skeleton. The values file pattern is the same as the one in this lab: keep shared defaults in the chart and override them with a values file when you need a specific environment.
+
+To render the example values file without applying it yet, run:
+
+```bash
+helm template axispay platform/charts/axispay \
+  -f days/day5/labs/L5.3-helm-packaging/values.yaml | head -40
+```
+
+To install or upgrade the Axispay platform with the example values file, use:
+
+```bash
+helm upgrade --install axispay platform/charts/axispay \
+  -f days/day5/labs/L5.3-helm-packaging/values.yaml \
+  -n axispay-core --create-namespace --wait --timeout 10m
+```
+
+## Helm lifecycle from creation to deletion
+
+This section gives you the full working loop for Helm. Use it as a checklist for creating a chart, deploying it, changing it, and removing it again.
+
+### 1. Create a chart from scratch (optional)
+
+If you want to build a new chart by hand, Helm can scaffold one for you:
+
+```bash
+mkdir -p ~/helm-lab
+cd ~/helm-lab
+helm create demo-app
+find demo-app -maxdepth 2 -type f | sort
+```
+
+The important files are:
+
+- `Chart.yaml` — chart metadata
+- `values.yaml` — default values
+- `templates/` — manifest templates
+- `templates/tests/` — optional test templates
+
+### 2. Install a chart from a repository (optional)
+
+If you want to use a published chart instead of a local chart:
+
+```bash
+helm repo add bitnami https://charts.bitnami.com/bitnami
+helm repo update
+helm search repo bitnami/nginx
+helm pull bitnami/nginx
+mkdir -p ~/helm-lab/charts
+tar -xzf nginx-*.tgz -C ~/helm-lab/charts
+```
+
+This is useful when you want to learn from a real chart before building your own.
+
+### 3. Lint the chart before deploying
+
+Before you install anything, always lint it:
+
+```bash
+helm lint ~/helm-lab/demo-app
+```
+
+For this repository's chart, use:
+
+```bash
+helm lint platform/charts/axispay -f platform/charts/axispay/values.yaml
+```
+
+### 4. Render the chart to see the real YAML
+
+Rendering is the fastest way to check what Helm will send to Kubernetes:
+
+```bash
+helm template demo-app ~/helm-lab/demo-app | head -40
+```
+
+For this repository's chart:
+
+```bash
+helm template axispay platform/charts/axispay \
+  -f days/day5/labs/L5.3-helm-packaging/values.yaml | head -40
+```
+
+### 5. Deploy the chart to the cluster
+
+Install or update the release in one command:
+
+```bash
+helm upgrade --install demo-app ~/helm-lab/demo-app \
+  -n demo-app --create-namespace --wait --timeout 10m
+```
+
+For AxisPay, use:
+
+```bash
+helm upgrade --install axispay platform/charts/axispay \
+  -f days/day5/labs/L5.3-helm-packaging/values.yaml \
+  -n axispay-core --create-namespace --wait --timeout 10m
+```
+
+The important flags are:
+
+- `--install` — create the release if it does not exist
+- `--upgrade` — update the release if it exists
+- `--create-namespace` — create the target namespace automatically
+- `--wait` — block until the rollout finishes or fails
+- `--timeout 10m` — stop waiting after a reasonable time
+
+### 6. Inspect and verify the release
+
+After deployment, confirm the release and the workloads:
+
+```bash
+helm list -A
+helm status demo-app -n demo-app
+helm get values demo-app -n demo-app -o yaml
+kubectl get pods -n demo-app
+kubectl get svc -n demo-app
+```
+
+If you need the exact manifests Helm applied:
+
+```bash
+helm get manifest demo-app -n demo-app | head -80
+```
+
+### 7. Change the chart or its values
+
+There are two common edit paths:
+
+1. Change the values file and upgrade the release
+2. Change the templates and then render again
+
+Example: change a replica count in `values.yaml` and re-apply:
+
+```bash
+nano ~/helm-lab/demo-app/values.yaml
+helm upgrade --install demo-app ~/helm-lab/demo-app \
+  -n demo-app --wait --timeout 10m
+```
+
+For AxisPay, edit the example values file and re-apply:
+
+```bash
+nano days/day5/labs/L5.3-helm-packaging/values.yaml
+helm upgrade --install axispay platform/charts/axispay \
+  -f days/day5/labs/L5.3-helm-packaging/values.yaml \
+  -n axispay-core --wait --timeout 10m
+```
+
+### 8. Roll back a bad release
+
+If a change causes problems, inspect the history first:
+
+```bash
+helm history demo-app -n demo-app
+```
+
+Then roll back to a previous revision:
+
+```bash
+helm rollback demo-app 1 -n demo-app --wait --timeout 10m
+```
+
+The rollback command replays the previous release state from Helm history.
+
+### 9. Delete the release and clean up
+
+To remove the release from the cluster:
+
+```bash
+helm uninstall demo-app -n demo-app
+```
+
+If you also want to remove the namespace and its resources:
+
+```bash
+kubectl delete namespace demo-app
+```
+
+For AxisPay:
+
+```bash
+helm uninstall axispay -n axispay-core
+kubectl delete namespace axispay-core
+```
+
+If you want to keep the Helm release history around for rollback purposes, use:
+
+```bash
+helm uninstall demo-app -n demo-app --keep-history
+```
+
+That removes the deployed resources but keeps the release history available for later inspection.
+
 ## Then do this
 
 What you should expect to see: Helm can lint the chart before it ever talks to the cluster.

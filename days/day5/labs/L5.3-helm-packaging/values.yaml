@@ -1,0 +1,161 @@
+# ==============================================================================
+# Example Helm values for L5.3
+# ==============================================================================
+# This file is a teaching example for the AxisPay Helm chart in
+# platform/charts/axispay/.
+#
+# How to read it:
+#   - top-level sections control shared defaults for the whole release
+#   - the services block changes one workload at a time (replicas, resources,
+#     environment variables, etc.)
+#   - Helm reads this file and renders the templates into Kubernetes YAML
+#
+# How to use it:
+#   1. Install Helm (see the README in this folder)
+#   2. Run: helm template axispay platform/charts/axispay -f days/day5/labs/L5.3-helm-packaging/values.yaml
+#   3. Then install or upgrade:
+#        helm upgrade --install axispay platform/charts/axispay \
+#          -f days/day5/labs/L5.3-helm-packaging/values.yaml \
+#          -n axispay-core --create-namespace --wait --timeout 10m
+# ==============================================================================
+
+global:
+  image:
+    registry: ""
+    repository: axispay
+    tag: "1.0.0"
+    pullPolicy: IfNotPresent
+  environment: training
+  logLevel: info
+  defaultCurrency: ZAR
+  supportedCurrencies: "ZAR,USD,EUR,GBP,NGN,KES,BWP"
+  downstreamTimeoutSeconds: "5.0"
+
+networkPolicy:
+  enabled: true
+  nodeCIDR: 192.168.49.0/24
+
+podSecurity:
+  enforce: restricted
+
+serviceAccount:
+  create: true
+  automountToken: false
+
+securityContext:
+  pod:
+    runAsNonRoot: true
+    runAsUser: 10001
+    runAsGroup: 10001
+    fsGroup: 10001
+    seccompProfile:
+      type: RuntimeDefault
+  container:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    capabilities:
+      drop: ["ALL"]
+
+probes:
+  startup:
+    path: /startupz
+    periodSeconds: 2
+    failureThreshold: 30
+  liveness:
+    path: /healthz
+    periodSeconds: 10
+    timeoutSeconds: 3
+    failureThreshold: 3
+  readiness:
+    path: /readyz
+    periodSeconds: 5
+    timeoutSeconds: 3
+    failureThreshold: 2
+
+strategy:
+  maxUnavailable: 0
+  maxSurge: 1
+terminationGracePeriodSeconds: 45
+preStopSleepSeconds: 8
+
+namespaces:
+  edge: axispay-edge
+  core: axispay-core
+  async: axispay-async
+  data: axispay-data
+  ops: axispay-ops
+  observability: axispay-observability
+
+services:
+  payment-service:
+    enabled: true
+    zone: core
+    replicas: 3
+    resources:
+      requests:
+        cpu: 100m
+        memory: 96Mi
+      limits:
+        cpu: 500m
+        memory: 256Mi
+    hpa:
+      enabled: true
+      minReplicas: 3
+      maxReplicas: 8
+      targetCPU: 70
+    antiAffinity: required
+    env:
+      ENABLE_RISK_ROUTING: "true"
+      MERCHANT_SERVICE_URL: http://merchant-service.axispay-core.svc.cluster.local:8080
+      FRAUD_SERVICE_URL: http://fraud-service.axispay-core.svc.cluster.local:8080
+      ROUTING_SERVICE_URL: http://routing-service.axispay-core.svc.cluster.local:8080
+      LEDGER_SERVICE_URL: http://ledger-service.axispay-core.svc.cluster.local:8080
+      CUSTOMER_SERVICE_URL: http://customer-service.axispay-core.svc.cluster.local:8080
+    secretEnv:
+      DATABASE_URL:
+        secret: axispay-db-credentials
+        key: DATABASE_URL
+
+  edge-gateway:
+    enabled: true
+    zone: edge
+    replicas: 2
+    resources:
+      requests:
+        cpu: 50m
+        memory: 64Mi
+      limits:
+        cpu: 300m
+        memory: 192Mi
+    env:
+      AUTH_SERVICE_URL: http://auth-service.axispay-edge.svc.cluster.local:8080
+      PAYMENT_SERVICE_URL: http://payment-service.axispay-core.svc.cluster.local:8080
+      MERCHANT_SERVICE_URL: http://merchant-service.axispay-core.svc.cluster.local:8080
+
+ingress:
+  enabled: true
+  className: nginx
+  sslRedirect: true
+  api:
+    host: api.axispay.local
+    tlsSecret: axispay-tls
+    service: edge-gateway
+    path: /api/v1
+    rateLimitRps: 50
+  portal:
+    host: portal.axispay.local
+    tlsSecret: axispay-portal-tls
+    service: reporting-service
+    path: /api/v1/reports
+    rateLimitRps: 10
+
+observability:
+  enabled: true
+  serviceMonitor:
+    enabled: true
+    interval: 30s
+    path: /metrics
+  alerts:
+    enabled: true
+    availabilitySLO: 99.5
+    latencyP99Ms: 300
