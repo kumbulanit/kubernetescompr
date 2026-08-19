@@ -108,6 +108,18 @@ statefulset.apps/rabbitmq created
 
 The mix of `created` and `unchanged` is normal because some Secrets were already created in L3.2.
 
+If `kubectl apply -f manifests/` fails with errors such as `Forbidden: updates to statefulset spec ...` or `field is immutable`, the existing StatefulSet and its storage objects were already created and Kubernetes will not let you patch them in place. Delete the old objects, then reapply the storage bootstrap and the lab manifests:
+
+```bash
+kubectl delete statefulset postgres redis rabbitmq -n axispay-data --ignore-not-found
+kubectl delete pvc -n axispay-data data-postgres-0 data-redis-0 data-rabbitmq-0 --ignore-not-found
+kubectl delete pv postgres-data-local redis-data-local rabbitmq-data-local --ignore-not-found
+kubectl delete storageclass ubuntu-local-storage --ignore-not-found
+kubectl apply -f ../../00-namespaces.yaml
+kubectl apply -f ../../00-ubuntu-local-storage.yaml
+kubectl apply -f manifests/
+```
+
 ---
 
 ## Step 2 — Wait for the StatefulSets to become ready
@@ -164,10 +176,10 @@ rabbitmq   ClusterIP   None         <none>        5672/TCP,15672/TCP  2m03s
 redis      ClusterIP   None         <none>        6379/TCP            2m07s
 
 $ kubectl get pvc -n axispay-data
-NAME              STATUS   VOLUME                                     CAPACITY   ACCESS MODES   STORAGECLASS       VOLUMEMODE   AGE
-data-postgres-0   Bound    pvc-8fa1a0d6-f4dc-4ef1-9d15-2f79d0f4fd8b   5Gi        RWO            axispay-standard   Filesystem   2m11s
-data-rabbitmq-0   Bound    pvc-5368ef02-64e1-4d60-84f2-f7e993f3fc2b   2Gi        RWO            axispay-standard   Filesystem   2m02s
-data-redis-0      Bound    pvc-a263f09e-4324-4045-ae0e-4b563eb795da   1Gi        RWO            axispay-standard   Filesystem   2m06s
+NAME              STATUS   VOLUME                                     CAPACITY   ACCESS MODES   STORAGECLASS           VOLUMEMODE   AGE
+data-postgres-0   Bound    pvc-8fa1a0d6-f4dc-4ef1-9d15-2f79d0f4fd8b   5Gi        RWO            ubuntu-local-storage   Filesystem   2m11s
+data-rabbitmq-0   Bound    pvc-5368ef02-64e1-4d60-84f2-f7e993f3fc2b   2Gi        RWO            ubuntu-local-storage   Filesystem   2m02s
+data-redis-0      Bound    pvc-a263f09e-4324-4045-ae0e-4b563eb795da   1Gi        RWO            ubuntu-local-storage   Filesystem   2m06s
 ```
 
 Headless Services show `CLUSTER-IP   None`. That is intentional for StatefulSets.

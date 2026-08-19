@@ -1,0 +1,74 @@
+# ==============================================================================
+# Day 3 local storage bootstrap for Ubuntu / single-node clusters
+# ==============================================================================
+# IMPORTANT: changing a StatefulSet's volumeClaimTemplates is immutable. If the
+# StatefulSet already exists, delete it together with its PVCs before reapplying
+# this storage change so the pod template can be recreated with the new class.
+# ==============================================================================
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: ubuntu-local-storage
+  labels:
+    app.kubernetes.io/part-of: axispay
+    axispay.io/day-introduced: "3"
+  annotations:
+    axispay.io/description: "HostPath-backed local storage for Day 3 StatefulSets"
+provisioner: kubernetes.io/no-provisioner
+reclaimPolicy: Retain
+volumeBindingMode: WaitForFirstConsumer
+allowVolumeExpansion: true
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: postgres-data-local
+spec:
+  capacity:
+    storage: 5Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: ubuntu-local-storage
+  hostPath:
+    path: /var/lib/axispay/postgres
+    type: DirectoryOrCreate
+  claimRef:
+    namespace: axispay-data
+    name: data-postgres-0
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: redis-data-local
+spec:
+  capacity:
+    storage: 1Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: ubuntu-local-storage
+  hostPath:
+    path: /var/lib/axispay/redis
+    type: DirectoryOrCreate
+  claimRef:
+    namespace: axispay-data
+    name: data-redis-0
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: rabbitmq-data-local
+spec:
+  capacity:
+    storage: 2Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: ubuntu-local-storage
+  hostPath:
+    path: /var/lib/axispay/rabbitmq
+    type: DirectoryOrCreate
+  claimRef:
+    namespace: axispay-data
+    name: data-rabbitmq-0

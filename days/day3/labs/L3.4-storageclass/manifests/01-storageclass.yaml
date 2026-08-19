@@ -11,7 +11,7 @@ apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
   name: axispay-standard
-provisioner: kubernetes.io/no-provisioner  # Local Minikube provisioner for classroom clusters.
+provisioner: k8s.io/minikube-hostpath  # Local Minikube provisioner for classroom clusters.
 reclaimPolicy: Retain  # Delete the claim, keep the data for investigation or recovery.
 volumeBindingMode: WaitForFirstConsumer  # Delay binding until a real Pod needs the volume.
 allowVolumeExpansion: true  # PVCs using this class can be resized later.

@@ -256,6 +256,18 @@ kubectl apply -f manifests/01-postgres.yaml
 kubectl rollout status statefulset/postgres -n axispay-data --timeout=180s
 ```
 
+If the apply fails with errors such as `Forbidden: updates to statefulset spec ...` or `field is immutable`, the existing StatefulSet or storage objects are still present. Delete them first and then reapply the storage bootstrap and the PostgreSQL manifest:
+
+```bash
+kubectl delete statefulset postgres -n axispay-data --ignore-not-found
+kubectl delete pvc data-postgres-0 -n axispay-data --ignore-not-found
+kubectl delete pv postgres-data-local --ignore-not-found
+kubectl delete storageclass ubuntu-local-storage --ignore-not-found
+kubectl apply -f ../../00-namespaces.yaml
+kubectl apply -f ../../00-ubuntu-local-storage.yaml
+kubectl apply -f manifests/01-postgres.yaml
+```
+
 Expected result:
 
 ```text

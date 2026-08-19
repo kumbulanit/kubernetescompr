@@ -1,0 +1,26 @@
+# ==============================================================================
+# Day 3 namespace bootstrap
+# ==============================================================================
+# These namespaces are required by the Day 3 labs and should be applied before
+# the workload manifests in the recursive `kubectl apply -R -f day3/` flow.
+# ==============================================================================
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: axispay-data
+  labels:
+    kubernetes.io/metadata.name: axispay-data
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: axispay-edge
+  labels:
+    kubernetes.io/metadata.name: axispay-edge
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: axispay-core
+  labels:
+    kubernetes.io/metadata.name: axispay-core
