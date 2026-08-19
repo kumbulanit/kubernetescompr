@@ -1,27 +1,44 @@
 # ==============================================================================
-# Strategic-merge patches applying the security baseline to every app workload.
-# NOTE: this is a PATCH manifest, not a full standalone Deployment manifest.
-# It is intended to be applied with `kubectl patch` against each live Deployment,
-# not with `kubectl apply -f`.
-#
-# Examples:
-#   kubectl patch deployment edge-gateway -n axispay-edge --type merge \
-#     --patch-file platform/manifests/day3/security/02-hardened-deployments.yaml
-#
-# The object below is intentionally partial and only includes the fields that are
-# being changed in the live Deployment. That is why it cannot be used as a plain
-# `kubectl apply` file.
+# Full Deployment manifests applying the security baseline to every app workload.
+# This file is intentionally a complete Kubernetes object (not a strategic merge
+# patch) because `kubectl apply` requires each Deployment to include its selector
+# and a valid pod template. The selector is immutable after creation, so the
+# values below must match the labels already used by the Day 1 apps.
 # ==============================================================================
 ---
-# edge-gateway: non-root, read-only root filesystem, all capabilities dropped
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: edge-gateway
   namespace: axispay-edge
+  labels:
+    app.kubernetes.io/name: edge-gateway
+    app.kubernetes.io/instance: axispay
+    app.kubernetes.io/version: "1.0.0"
+    app.kubernetes.io/component: edge
+    app.kubernetes.io/part-of: axispay
+    app.kubernetes.io/managed-by: kubectl
+    axispay.io/zone: edge
+    axispay.io/day-introduced: "3"
 spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: edge-gateway
+      app.kubernetes.io/instance: axispay
   template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: edge-gateway
+        app.kubernetes.io/instance: axispay
+        app.kubernetes.io/version: "1.0.0"
+        app.kubernetes.io/component: edge
+        app.kubernetes.io/part-of: axispay
+        app.kubernetes.io/managed-by: kubectl
+        axispay.io/zone: edge
+        axispay.io/day-introduced: "3"
     spec:
+      terminationGracePeriodSeconds: 30
       securityContext:
         runAsNonRoot: true
         runAsUser: 10001
@@ -31,15 +48,14 @@ spec:
           type: RuntimeDefault
       containers:
         - name: edge-gateway
+          image: axispay/edge-gateway:1.0.0
+          imagePullPolicy: IfNotPresent
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
             capabilities:
               drop: ["ALL"]
           volumeMounts:
-            # readOnlyRootFilesystem breaks anything that writes to /tmp.
-            # An emptyDir gives it somewhere legitimate — in RAM, gone when
-            # the pod dies, and never persisted.
             - name: tmp
               mountPath: /tmp
       volumes:
@@ -48,15 +64,39 @@ spec:
             medium: Memory
             sizeLimit: 32Mi
 ---
-# auth-service: non-root, read-only root filesystem, all capabilities dropped
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: auth-service
   namespace: axispay-edge
+  labels:
+    app.kubernetes.io/name: auth-service
+    app.kubernetes.io/instance: axispay
+    app.kubernetes.io/version: "1.0.0"
+    app.kubernetes.io/component: edge
+    app.kubernetes.io/part-of: axispay
+    app.kubernetes.io/managed-by: kubectl
+    axispay.io/zone: edge
+    axispay.io/day-introduced: "3"
 spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: auth-service
+      app.kubernetes.io/instance: axispay
   template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: auth-service
+        app.kubernetes.io/instance: axispay
+        app.kubernetes.io/version: "1.0.0"
+        app.kubernetes.io/component: edge
+        app.kubernetes.io/part-of: axispay
+        app.kubernetes.io/managed-by: kubectl
+        axispay.io/zone: edge
+        axispay.io/day-introduced: "3"
     spec:
+      terminationGracePeriodSeconds: 30
       securityContext:
         runAsNonRoot: true
         runAsUser: 10001
@@ -66,15 +106,14 @@ spec:
           type: RuntimeDefault
       containers:
         - name: auth-service
+          image: axispay/auth-service:1.0.0
+          imagePullPolicy: IfNotPresent
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
             capabilities:
               drop: ["ALL"]
           volumeMounts:
-            # readOnlyRootFilesystem breaks anything that writes to /tmp.
-            # An emptyDir gives it somewhere legitimate — in RAM, gone when
-            # the pod dies, and never persisted.
             - name: tmp
               mountPath: /tmp
       volumes:
@@ -83,15 +122,39 @@ spec:
             medium: Memory
             sizeLimit: 32Mi
 ---
-# merchant-service: non-root, read-only root filesystem, all capabilities dropped
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: merchant-service
   namespace: axispay-core
+  labels:
+    app.kubernetes.io/name: merchant-service
+    app.kubernetes.io/instance: axispay
+    app.kubernetes.io/version: "1.0.0"
+    app.kubernetes.io/component: core
+    app.kubernetes.io/part-of: axispay
+    app.kubernetes.io/managed-by: kubectl
+    axispay.io/zone: core
+    axispay.io/day-introduced: "3"
 spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: merchant-service
+      app.kubernetes.io/instance: axispay
   template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: merchant-service
+        app.kubernetes.io/instance: axispay
+        app.kubernetes.io/version: "1.0.0"
+        app.kubernetes.io/component: core
+        app.kubernetes.io/part-of: axispay
+        app.kubernetes.io/managed-by: kubectl
+        axispay.io/zone: core
+        axispay.io/day-introduced: "3"
     spec:
+      terminationGracePeriodSeconds: 30
       securityContext:
         runAsNonRoot: true
         runAsUser: 10001
@@ -101,15 +164,14 @@ spec:
           type: RuntimeDefault
       containers:
         - name: merchant-service
+          image: axispay/merchant-service:1.0.0
+          imagePullPolicy: IfNotPresent
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
             capabilities:
               drop: ["ALL"]
           volumeMounts:
-            # readOnlyRootFilesystem breaks anything that writes to /tmp.
-            # An emptyDir gives it somewhere legitimate — in RAM, gone when
-            # the pod dies, and never persisted.
             - name: tmp
               mountPath: /tmp
       volumes:
@@ -118,15 +180,39 @@ spec:
             medium: Memory
             sizeLimit: 32Mi
 ---
-# payment-service: non-root, read-only root filesystem, all capabilities dropped
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: payment-service
   namespace: axispay-core
+  labels:
+    app.kubernetes.io/name: payment-service
+    app.kubernetes.io/instance: axispay
+    app.kubernetes.io/version: "1.0.0"
+    app.kubernetes.io/component: core
+    app.kubernetes.io/part-of: axispay
+    app.kubernetes.io/managed-by: kubectl
+    axispay.io/zone: core
+    axispay.io/day-introduced: "3"
 spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: payment-service
+      app.kubernetes.io/instance: axispay
   template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: payment-service
+        app.kubernetes.io/instance: axispay
+        app.kubernetes.io/version: "1.0.0"
+        app.kubernetes.io/component: core
+        app.kubernetes.io/part-of: axispay
+        app.kubernetes.io/managed-by: kubectl
+        axispay.io/zone: core
+        axispay.io/day-introduced: "3"
     spec:
+      terminationGracePeriodSeconds: 30
       securityContext:
         runAsNonRoot: true
         runAsUser: 10001
@@ -136,15 +222,14 @@ spec:
           type: RuntimeDefault
       containers:
         - name: payment-service
+          image: axispay/payment-service:1.0.0
+          imagePullPolicy: IfNotPresent
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
             capabilities:
               drop: ["ALL"]
           volumeMounts:
-            # readOnlyRootFilesystem breaks anything that writes to /tmp.
-            # An emptyDir gives it somewhere legitimate — in RAM, gone when
-            # the pod dies, and never persisted.
             - name: tmp
               mountPath: /tmp
       volumes:
@@ -153,15 +238,39 @@ spec:
             medium: Memory
             sizeLimit: 32Mi
 ---
-# fraud-service: non-root, read-only root filesystem, all capabilities dropped
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: fraud-service
   namespace: axispay-core
+  labels:
+    app.kubernetes.io/name: fraud-service
+    app.kubernetes.io/instance: axispay
+    app.kubernetes.io/version: "1.0.0"
+    app.kubernetes.io/component: core
+    app.kubernetes.io/part-of: axispay
+    app.kubernetes.io/managed-by: kubectl
+    axispay.io/zone: core
+    axispay.io/day-introduced: "3"
 spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: fraud-service
+      app.kubernetes.io/instance: axispay
   template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: fraud-service
+        app.kubernetes.io/instance: axispay
+        app.kubernetes.io/version: "1.0.0"
+        app.kubernetes.io/component: core
+        app.kubernetes.io/part-of: axispay
+        app.kubernetes.io/managed-by: kubectl
+        axispay.io/zone: core
+        axispay.io/day-introduced: "3"
     spec:
+      terminationGracePeriodSeconds: 30
       securityContext:
         runAsNonRoot: true
         runAsUser: 10001
@@ -171,15 +280,14 @@ spec:
           type: RuntimeDefault
       containers:
         - name: fraud-service
+          image: axispay/fraud-service:1.0.0
+          imagePullPolicy: IfNotPresent
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
             capabilities:
               drop: ["ALL"]
           volumeMounts:
-            # readOnlyRootFilesystem breaks anything that writes to /tmp.
-            # An emptyDir gives it somewhere legitimate — in RAM, gone when
-            # the pod dies, and never persisted.
             - name: tmp
               mountPath: /tmp
       volumes:
@@ -188,15 +296,39 @@ spec:
             medium: Memory
             sizeLimit: 32Mi
 ---
-# routing-service: non-root, read-only root filesystem, all capabilities dropped
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: routing-service
   namespace: axispay-core
+  labels:
+    app.kubernetes.io/name: routing-service
+    app.kubernetes.io/instance: axispay
+    app.kubernetes.io/version: "1.0.0"
+    app.kubernetes.io/component: core
+    app.kubernetes.io/part-of: axispay
+    app.kubernetes.io/managed-by: kubectl
+    axispay.io/zone: core
+    axispay.io/day-introduced: "3"
 spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: routing-service
+      app.kubernetes.io/instance: axispay
   template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: routing-service
+        app.kubernetes.io/instance: axispay
+        app.kubernetes.io/version: "1.0.0"
+        app.kubernetes.io/component: core
+        app.kubernetes.io/part-of: axispay
+        app.kubernetes.io/managed-by: kubectl
+        axispay.io/zone: core
+        axispay.io/day-introduced: "3"
     spec:
+      terminationGracePeriodSeconds: 30
       securityContext:
         runAsNonRoot: true
         runAsUser: 10001
@@ -206,15 +338,14 @@ spec:
           type: RuntimeDefault
       containers:
         - name: routing-service
+          image: axispay/routing-service:1.0.0
+          imagePullPolicy: IfNotPresent
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
             capabilities:
               drop: ["ALL"]
           volumeMounts:
-            # readOnlyRootFilesystem breaks anything that writes to /tmp.
-            # An emptyDir gives it somewhere legitimate — in RAM, gone when
-            # the pod dies, and never persisted.
             - name: tmp
               mountPath: /tmp
       volumes:
