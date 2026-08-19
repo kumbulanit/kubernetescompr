@@ -1,54 +1,108 @@
 # ==============================================================================
 # L3.7 — Security context
 # ==============================================================================
-# This file patches the Day 3 application Deployments with a simple hardening
-# baseline: non-root execution, a default seccomp profile, dropped capabilities and
-# a temporary writable directory.
+# This file applies a full hardening baseline to the Day 3 application
+# Deployments. It is intentionally not a strategic-merge patch because a plain
+# `kubectl apply` to a Deployment requires the selector and pod template fields
+# to be present for validation.
 #
-# What students should notice is that hardening is not one magic flag. Several small
-# settings work together, and one of them (readOnlyRootFilesystem) often forces you
-# to deliberately provide a scratch space such as /tmp.
+# The key lesson: security hardening is not a single flag. Several small settings
+# work together, and `readOnlyRootFilesystem: true` forces the pod to declare a
+# writable scratch area such as `/tmp`.
 # ==============================================================================
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: edge-gateway
   namespace: axispay-edge
+  labels:
+    app.kubernetes.io/name: edge-gateway
+    app.kubernetes.io/instance: axispay
+    app.kubernetes.io/version: "1.0.0"
+    app.kubernetes.io/component: edge
+    app.kubernetes.io/part-of: axispay
+    app.kubernetes.io/managed-by: kubectl
+    axispay.io/zone: edge
+    axispay.io/day-introduced: "3"
 spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: edge-gateway
+      app.kubernetes.io/instance: axispay
   template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: edge-gateway
+        app.kubernetes.io/instance: axispay
+        app.kubernetes.io/version: "1.0.0"
+        app.kubernetes.io/component: edge
+        app.kubernetes.io/part-of: axispay
+        app.kubernetes.io/managed-by: kubectl
+        axispay.io/zone: edge
+        axispay.io/day-introduced: "3"
     spec:
+      terminationGracePeriodSeconds: 30
       securityContext:
-        runAsNonRoot: true  # Kubelet fails the Pod if the image would need root.
+        runAsNonRoot: true
         runAsUser: 10001
         runAsGroup: 10001
         fsGroup: 10001
         seccompProfile:
-          type: RuntimeDefault  # Use the container runtime's safer syscall profile.
+          type: RuntimeDefault
       containers:
-      - name: edge-gateway
-        securityContext:
-          allowPrivilegeEscalation: false  # Stops setuid/setgid style privilege jumps.
-          readOnlyRootFilesystem: true  # A compromised process cannot write into the image layer.
-          capabilities:
-            drop:
-            - ALL  # Drop Linux capabilities instead of keeping the container defaults.
-        volumeMounts:
-        - name: tmp
-          mountPath: /tmp
+        - name: edge-gateway
+          image: axispay/edge-gateway:1.0.0
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
       volumes:
-      - name: tmp
-        emptyDir:
-          medium: Memory  # Give the app a scratch directory without making the root FS writable.
-          sizeLimit: 32Mi
+        - name: tmp
+          emptyDir:
+            medium: Memory
+            sizeLimit: 32Mi
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: auth-service
   namespace: axispay-edge
+  labels:
+    app.kubernetes.io/name: auth-service
+    app.kubernetes.io/instance: axispay
+    app.kubernetes.io/version: "1.0.0"
+    app.kubernetes.io/component: edge
+    app.kubernetes.io/part-of: axispay
+    app.kubernetes.io/managed-by: kubectl
+    axispay.io/zone: edge
+    axispay.io/day-introduced: "3"
 spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: auth-service
+      app.kubernetes.io/instance: axispay
   template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: auth-service
+        app.kubernetes.io/instance: axispay
+        app.kubernetes.io/version: "1.0.0"
+        app.kubernetes.io/component: edge
+        app.kubernetes.io/part-of: axispay
+        app.kubernetes.io/managed-by: kubectl
+        axispay.io/zone: edge
+        axispay.io/day-introduced: "3"
     spec:
+      terminationGracePeriodSeconds: 30
       securityContext:
         runAsNonRoot: true
         runAsUser: 10001
@@ -57,30 +111,57 @@ spec:
         seccompProfile:
           type: RuntimeDefault
       containers:
-      - name: auth-service
-        securityContext:
-          allowPrivilegeEscalation: false
-          readOnlyRootFilesystem: true
-          capabilities:
-            drop:
-            - ALL
-        volumeMounts:
-        - name: tmp
-          mountPath: /tmp
+        - name: auth-service
+          image: axispay/auth-service:1.0.0
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
       volumes:
-      - name: tmp
-        emptyDir:
-          medium: Memory
-          sizeLimit: 32Mi
+        - name: tmp
+          emptyDir:
+            medium: Memory
+            sizeLimit: 32Mi
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: merchant-service
   namespace: axispay-core
+  labels:
+    app.kubernetes.io/name: merchant-service
+    app.kubernetes.io/instance: axispay
+    app.kubernetes.io/version: "1.0.0"
+    app.kubernetes.io/component: core
+    app.kubernetes.io/part-of: axispay
+    app.kubernetes.io/managed-by: kubectl
+    axispay.io/zone: core
+    axispay.io/day-introduced: "3"
 spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: merchant-service
+      app.kubernetes.io/instance: axispay
   template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: merchant-service
+        app.kubernetes.io/instance: axispay
+        app.kubernetes.io/version: "1.0.0"
+        app.kubernetes.io/component: core
+        app.kubernetes.io/part-of: axispay
+        app.kubernetes.io/managed-by: kubectl
+        axispay.io/zone: core
+        axispay.io/day-introduced: "3"
     spec:
+      terminationGracePeriodSeconds: 30
       securityContext:
         runAsNonRoot: true
         runAsUser: 10001
@@ -89,30 +170,57 @@ spec:
         seccompProfile:
           type: RuntimeDefault
       containers:
-      - name: merchant-service
-        securityContext:
-          allowPrivilegeEscalation: false
-          readOnlyRootFilesystem: true
-          capabilities:
-            drop:
-            - ALL
-        volumeMounts:
-        - name: tmp
-          mountPath: /tmp
+        - name: merchant-service
+          image: axispay/merchant-service:1.0.0
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
       volumes:
-      - name: tmp
-        emptyDir:
-          medium: Memory
-          sizeLimit: 32Mi
+        - name: tmp
+          emptyDir:
+            medium: Memory
+            sizeLimit: 32Mi
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: payment-service
   namespace: axispay-core
+  labels:
+    app.kubernetes.io/name: payment-service
+    app.kubernetes.io/instance: axispay
+    app.kubernetes.io/version: "1.0.0"
+    app.kubernetes.io/component: core
+    app.kubernetes.io/part-of: axispay
+    app.kubernetes.io/managed-by: kubectl
+    axispay.io/zone: core
+    axispay.io/day-introduced: "3"
 spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: payment-service
+      app.kubernetes.io/instance: axispay
   template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: payment-service
+        app.kubernetes.io/instance: axispay
+        app.kubernetes.io/version: "1.0.0"
+        app.kubernetes.io/component: core
+        app.kubernetes.io/part-of: axispay
+        app.kubernetes.io/managed-by: kubectl
+        axispay.io/zone: core
+        axispay.io/day-introduced: "3"
     spec:
+      terminationGracePeriodSeconds: 30
       securityContext:
         runAsNonRoot: true
         runAsUser: 10001
@@ -121,30 +229,57 @@ spec:
         seccompProfile:
           type: RuntimeDefault
       containers:
-      - name: payment-service
-        securityContext:
-          allowPrivilegeEscalation: false
-          readOnlyRootFilesystem: true
-          capabilities:
-            drop:
-            - ALL
-        volumeMounts:
-        - name: tmp
-          mountPath: /tmp
+        - name: payment-service
+          image: axispay/payment-service:1.0.0
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
       volumes:
-      - name: tmp
-        emptyDir:
-          medium: Memory
-          sizeLimit: 32Mi
+        - name: tmp
+          emptyDir:
+            medium: Memory
+            sizeLimit: 32Mi
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: fraud-service
   namespace: axispay-core
+  labels:
+    app.kubernetes.io/name: fraud-service
+    app.kubernetes.io/instance: axispay
+    app.kubernetes.io/version: "1.0.0"
+    app.kubernetes.io/component: core
+    app.kubernetes.io/part-of: axispay
+    app.kubernetes.io/managed-by: kubectl
+    axispay.io/zone: core
+    axispay.io/day-introduced: "3"
 spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: fraud-service
+      app.kubernetes.io/instance: axispay
   template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: fraud-service
+        app.kubernetes.io/instance: axispay
+        app.kubernetes.io/version: "1.0.0"
+        app.kubernetes.io/component: core
+        app.kubernetes.io/part-of: axispay
+        app.kubernetes.io/managed-by: kubectl
+        axispay.io/zone: core
+        axispay.io/day-introduced: "3"
     spec:
+      terminationGracePeriodSeconds: 30
       securityContext:
         runAsNonRoot: true
         runAsUser: 10001
@@ -153,30 +288,57 @@ spec:
         seccompProfile:
           type: RuntimeDefault
       containers:
-      - name: fraud-service
-        securityContext:
-          allowPrivilegeEscalation: false
-          readOnlyRootFilesystem: true
-          capabilities:
-            drop:
-            - ALL
-        volumeMounts:
-        - name: tmp
-          mountPath: /tmp
+        - name: fraud-service
+          image: axispay/fraud-service:1.0.0
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
       volumes:
-      - name: tmp
-        emptyDir:
-          medium: Memory
-          sizeLimit: 32Mi
+        - name: tmp
+          emptyDir:
+            medium: Memory
+            sizeLimit: 32Mi
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: routing-service
   namespace: axispay-core
+  labels:
+    app.kubernetes.io/name: routing-service
+    app.kubernetes.io/instance: axispay
+    app.kubernetes.io/version: "1.0.0"
+    app.kubernetes.io/component: core
+    app.kubernetes.io/part-of: axispay
+    app.kubernetes.io/managed-by: kubectl
+    axispay.io/zone: core
+    axispay.io/day-introduced: "3"
 spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: routing-service
+      app.kubernetes.io/instance: axispay
   template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: routing-service
+        app.kubernetes.io/instance: axispay
+        app.kubernetes.io/version: "1.0.0"
+        app.kubernetes.io/component: core
+        app.kubernetes.io/part-of: axispay
+        app.kubernetes.io/managed-by: kubectl
+        axispay.io/zone: core
+        axispay.io/day-introduced: "3"
     spec:
+      terminationGracePeriodSeconds: 30
       securityContext:
         runAsNonRoot: true
         runAsUser: 10001
@@ -185,18 +347,20 @@ spec:
         seccompProfile:
           type: RuntimeDefault
       containers:
-      - name: routing-service
-        securityContext:
-          allowPrivilegeEscalation: false
-          readOnlyRootFilesystem: true
-          capabilities:
-            drop:
-            - ALL
-        volumeMounts:
-        - name: tmp
-          mountPath: /tmp
+        - name: routing-service
+          image: axispay/routing-service:1.0.0
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
       volumes:
-      - name: tmp
-        emptyDir:
-          medium: Memory
-          sizeLimit: 32Mi
+        - name: tmp
+          emptyDir:
+            medium: Memory
+            sizeLimit: 32Mi

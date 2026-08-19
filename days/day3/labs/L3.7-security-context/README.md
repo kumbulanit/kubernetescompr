@@ -62,7 +62,7 @@ Diagram source: Kubernetes blog/documentation (CC BY 4.0), “User namespaces be
 |---|---|
 | `README.md` | This lab. |
 | `manifests/01-securitycontext.yaml` | A ConfigMap that documents the baseline hardening settings. |
-| `manifests/02-hardened-deployments.yaml` | Deployment patches for edge and core services. |
+| `manifests/02-hardened-deployments.yaml` | Full Deployment manifests for the edge and core services, ready for `kubectl apply`. |
 
 ---
 
