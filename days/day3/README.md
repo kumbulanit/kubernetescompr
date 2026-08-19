@@ -105,3 +105,185 @@ Day 3 checkpoint
 ```
 
 If this command fails, do not guess. Go back to the matching lab, re-run the inspection commands there, and read the **events** or the **describe** output before changing anything.
+
+---
+
+## Rebuild everything from scratch (disaster recovery)
+
+Use this when your cluster crashed, you are coming back to Day 3 after a break and something feels broken, or you want a clean **Day 1 + Day 2 + Day 3** platform again before continuing with storage, ConfigMaps, Secrets, StatefulSets, and the data tier.
+
+Why not just re-apply an old lab manifest? Because Kubernetes tries to merge your old YAML with the live object already in the cluster. If that live state has drifted, the merge can fail with confusing errors such as:
+
+```text
+The Deployment "payment-service" is invalid:
+* spec.template.spec.containers[0].env[0].valueFrom: Invalid value: "": may not be specified when `value` is not empty
+```
+
+Deleting the AxisPay namespaces first removes that drifted state, so Kubernetes creates fresh objects instead of trying to patch a broken mix of old and new configuration.
+
+**Run this:**
+
+```bash
+make rebuild-day3
+```
+
+This is the important part: **you do not need to run three separate commands**. `make rebuild-day3` is one command that wipes the old Day 1–3 platform, then rebuilds **Day 1**, then **Day 2**, then **Day 3** in the correct dependency order. Even though you are on Day 3, this single command gives you a complete, working **Day 1 + Day 2 + Day 3** platform from absolutely nothing.
+
+Expected result:
+
+```text
+$ make rebuild-day3
+==> Deleting all AxisPay namespaces — this removes every workload, PVC and secret
+namespace "axispay-edge" deleted
+namespace "axispay-core" deleted
+namespace "axispay-async" deleted
+namespace "axispay-ops" deleted
+namespace "axispay-data" deleted
+Namespaces removed. Run 'make rebuild-day1' (or rebuild-day2 / day3 / day4 / day5) to recreate the platform.
+
+namespace/axispay-edge created
+namespace/axispay-core created
+namespace/axispay-async created
+
+==> Deploying Day 1
+deployment.apps/edge-gateway created
+deployment.apps/auth-service created
+deployment.apps/merchant-service created
+deployment.apps/payment-service created
+service/edge-gateway created
+service/auth-service created
+service/merchant-service created
+service/payment-service created
+pod/payment-service-bare created
+
+Cluster
+----------------------------------------------------------------
+  ✓ 1/1 nodes Ready
+
+Namespaces
+----------------------------------------------------------------
+  ✓ axispay-edge
+  ✓ axispay-core
+
+Workloads for day 1
+----------------------------------------------------------------
+  ✓ Deployment axispay-edge/edge-gateway has 1/1 ready replica(s)
+  ✓ Deployment axispay-edge/auth-service has 1/1 ready replica(s)
+  ✓ Deployment axispay-core/payment-service has 1/1 ready replica(s)
+  ✓ Deployment axispay-core/merchant-service has 1/1 ready replica(s)
+
+Services have endpoints
+----------------------------------------------------------------
+  ✓ Service axispay-edge/edge-gateway has 1 endpoint(s)
+  ✓ Service axispay-edge/auth-service has 1 endpoint(s)
+  ✓ Service axispay-core/payment-service has 1 endpoint(s)
+  ✓ Service axispay-core/merchant-service has 1 endpoint(s)
+
+End-to-end — a payment still works
+----------------------------------------------------------------
+  ✓ edge-gateway reaches payment-service in-cluster
+
+✓ DAY 1 CHECKPOINT PASSED — 12/12 checks
+
+==> Deploying Day 2
+namespace/axispay-ops created
+resourcequota/axispay-core-quota created
+limitrange/axispay-core-limits created
+deployment.apps/edge-gateway configured
+deployment.apps/auth-service configured
+deployment.apps/merchant-service configured
+deployment.apps/payment-service configured
+deployment.apps/fraud-service created
+deployment.apps/routing-service created
+deployment.apps/loadgen created
+service/fraud-service created
+service/routing-service created
+service/node-agent created
+service/loadgen created
+horizontalpodautoscaler.autoscaling/payment-service created
+horizontalpodautoscaler.autoscaling/fraud-service created
+daemonset.apps/node-agent created
+job.batch/recon-worker created
+cronjob.batch/settlement-cron created
+deployment.apps/payment-service configured
+
+Cluster
+----------------------------------------------------------------
+  ✓ 1/1 nodes Ready
+
+Namespaces
+----------------------------------------------------------------
+  ✓ axispay-edge
+  ✓ axispay-core
+  ✓ axispay-ops
+  ✓ axispay-async
+
+Day 2 — resources, probes and autoscaling
+----------------------------------------------------------------
+  ✓ every container has a memory limit
+  ✓ HorizontalPodAutoscaler present
+  ✓ settlement-cron CronJob present
+
+✓ DAY 2 CHECKPOINT PASSED — 21/21 checks
+
+==> Deploying Day 3
+namespace/axispay-data created
+configmap/axispay-platform-config created
+configmap/axispay-fraud-rules created
+deployment.apps/customer-service created
+service/customer-service created
+deployment.apps/ledger-service created
+service/ledger-service created
+secret/axispay-db-credentials created
+secret/axispay-db-credentials created
+secret/axispay-jwt-signing created
+secret/axispay-redis-credentials created
+secret/axispay-rabbitmq-credentials created
+configmap/axispay-security-baseline created
+deployment.apps/edge-gateway configured
+deployment.apps/auth-service configured
+deployment.apps/merchant-service configured
+deployment.apps/payment-service configured
+deployment.apps/fraud-service configured
+deployment.apps/routing-service configured
+storageclass.storage.k8s.io/axispay-standard created
+persistentvolume/axispay-ledger-archive created
+persistentvolumeclaim/ledger-archive created
+configmap/postgres-init created
+service/postgres created
+statefulset.apps/postgres created
+service/redis created
+statefulset.apps/redis created
+service/rabbitmq created
+statefulset.apps/rabbitmq created
+
+Cluster
+----------------------------------------------------------------
+  ✓ 1/1 nodes Ready
+
+Namespaces
+----------------------------------------------------------------
+  ✓ axispay-edge
+  ✓ axispay-core
+  ✓ axispay-ops
+  ✓ axispay-async
+  ✓ axispay-data
+
+Day 3 — storage and configuration
+----------------------------------------------------------------
+  ✓ postgres StatefulSet present
+  ✓ every PVC is Bound
+  ✓ database seeded (5000 payments)
+
+End-to-end — a payment still works
+----------------------------------------------------------------
+  ✓ edge-gateway reaches payment-service in-cluster
+
+✓ DAY 3 CHECKPOINT PASSED — 29/29 checks
+```
+
+On a fresh rebuild, Day 3 usually pauses longest while the PVCs bind and PostgreSQL, Redis, and RabbitMQ become ready. That is normal.
+
+If you are already further along in the course, use the matching higher rebuild target instead, for example `make rebuild-day5`.
+
+**Warning:** this command is destructive. It deletes everything in the AxisPay namespaces, including current workloads, Secrets, PVCs, and any data stored in those volumes. Only run it when you are fine losing the current state.

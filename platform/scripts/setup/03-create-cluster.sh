@@ -59,7 +59,7 @@ cmd=(
   --disk-size="${MINIKUBE_DISK:-20g}"
   --nodes="${NODES}"
   --cni="${MINIKUBE_CNI:-calico}"
-  --addons="${MINIKUBE_ADDONS:-metrics-server,ingress,storage-provisioner}"
+  --addons="${MINIKUBE_ADDONS:-metrics-server,ingress,default-storageclass,storage-provisioner}"
   --wait=all
 )
 

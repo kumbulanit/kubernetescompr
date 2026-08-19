@@ -159,6 +159,233 @@ Tips & tricks:
 - `kubectl logs --previous` only works after a container actually restarted and old logs still exist.
 - Start with `kubectl describe` when something is stuck; events often show the reason faster than scanning YAML.
 
+## Rebuild everything from scratch (disaster recovery)
+
+Use this when your cluster crashed, you are resuming Day 5 after a break and RBAC, Helm, metrics, or logging feel half-broken, or you want the cleanest possible full platform before the final assessment/capstone.
+
+Why not just re-apply an old lab manifest? Because Kubernetes tries to merge your old YAML with the live object already in the cluster. If that live state has drifted, the merge can fail with confusing errors such as:
+
+```text
+The Deployment "payment-service" is invalid:
+* spec.template.spec.containers[0].env[0].valueFrom: Invalid value: "": may not be specified when `value` is not empty
+```
+
+Deleting the AxisPay namespaces first removes that drifted state, so Kubernetes creates fresh objects instead of trying to patch a broken mix of old and new configuration.
+
+One important Day 5 detail: `deploy-day5` **does** apply `platform/manifests/day5/observability/`, but that folder only contains the AxisPay observability objects (`ServiceMonitor`, `PrometheusRule`, `AlertmanagerConfig`, dashboard ConfigMaps, NetworkPolicies, and `alert-sink`). The actual Prometheus/Grafana/Loki/Alloy stack is still a separate Helm-based install from `make observability` (or `make observability-slim` on a smaller laptop).
+
+**If this is a fresh cluster and observability is not installed yet, run this first:**
+
+```bash
+make observability
+```
+
+Expected result:
+
+```text
+$ make observability
+==> Checking there is room for this
+  cluster allocatable CPU: 6000m
+
+==> Adding chart repositories
+  OK   repositories updated
+  OK   namespace axispay-observability ready (Pod Security: privileged — Alloy needs hostPath)
+
+==> Installing kube-prometheus-stack 66.3.0
+  this pulls ~900 MB and takes 5-15 minutes on first run
+Release "kube-prometheus-stack" does not exist. Installing it now.
+NAME: kube-prometheus-stack
+LAST DEPLOYED: Fri Aug 22 09:14:03 2026
+NAMESPACE: axispay-observability
+STATUS: deployed
+  OK   Prometheus, Alertmanager and Grafana installed
+
+==> Installing Loki 6.24.0
+Release "loki" does not exist. Installing it now.
+NAME: loki
+LAST DEPLOYED: Fri Aug 22 09:19:41 2026
+NAMESPACE: axispay-observability
+STATUS: deployed
+  OK   Loki installed (single-binary, 24h retention)
+
+==> Installing Alloy 0.10.1
+Release "alloy" does not exist. Installing it now.
+NAME: alloy
+LAST DEPLOYED: Fri Aug 22 09:22:18 2026
+NAMESPACE: axispay-observability
+STATUS: deployed
+  OK   Alloy installed (DaemonSet — one collector per node)
+
+==> Applying the AxisPay observability manifests
+servicemonitor.monitoring.coreos.com/axispay-edge created
+servicemonitor.monitoring.coreos.com/axispay-core created
+servicemonitor.monitoring.coreos.com/axispay-async created
+servicemonitor.monitoring.coreos.com/axispay-ops created
+prometheusrule.monitoring.coreos.com/axispay-slo created
+alertmanagerconfig.monitoring.coreos.com/axispay-routing created
+configmap/axispay-dashboard-platform created
+configmap/axispay-dashboard-triage created
+networkpolicy.networking.k8s.io/default-deny-all created
+networkpolicy.networking.k8s.io/allow-dns-egress created
+networkpolicy.networking.k8s.io/allow-prometheus-scrape created
+networkpolicy.networking.k8s.io/allow-node-agent-to-apiserver created
+networkpolicy.networking.k8s.io/allow-observability-internal created
+networkpolicy.networking.k8s.io/allow-observability-egress created
+deployment.apps/alert-sink created
+serviceaccount/alert-sink created
+service/alert-sink created
+servicemonitor.monitoring.coreos.com/axispay-observability created
+  OK   ServiceMonitors, rules, alert routing, dashboards and the sink applied
+
+==> Verifying
+  OK   alert-sink is Ready
+  OK   5 ServiceMonitors registered
+  OK   PrometheusRule applied
+  OK   2 dashboards provisioned
+```
+
+**Run this:**
+
+```bash
+make rebuild-day5
+```
+
+This is the same rebuild pattern you first saw on Day 3, just at the final level: **you do not need to run five separate commands**. `make rebuild-day5` is one command that wipes the old platform, then rebuilds **Day 1**, **Day 2**, **Day 3**, **Day 4**, and **Day 5** in the correct dependency order. It gives you the complete course platform back from nothing.
+
+Expected result:
+
+```text
+$ make rebuild-day5
+==> Deleting all AxisPay namespaces — this removes every workload, PVC and secret
+namespace "axispay-edge" deleted
+namespace "axispay-core" deleted
+namespace "axispay-async" deleted
+namespace "axispay-ops" deleted
+namespace "axispay-data" deleted
+namespace "axispay-observability" deleted
+Namespaces removed. Run 'make rebuild-day1' (or rebuild-day2 / day3 / day4 / day5) to recreate the platform.
+
+namespace/axispay-edge created
+namespace/axispay-core created
+namespace/axispay-async created
+
+==> Deploying Day 1
+deployment.apps/edge-gateway created
+deployment.apps/auth-service created
+deployment.apps/merchant-service created
+deployment.apps/payment-service created
+service/edge-gateway created
+service/auth-service created
+service/merchant-service created
+service/payment-service created
+pod/payment-service-bare created
+✓ DAY 1 CHECKPOINT PASSED — 12/12 checks
+
+==> Deploying Day 2
+namespace/axispay-ops created
+deployment.apps/fraud-service created
+deployment.apps/routing-service created
+daemonset.apps/node-agent created
+horizontalpodautoscaler.autoscaling/payment-service created
+cronjob.batch/settlement-cron created
+✓ DAY 2 CHECKPOINT PASSED — 21/21 checks
+
+==> Deploying Day 3
+namespace/axispay-data created
+deployment.apps/customer-service created
+deployment.apps/ledger-service created
+statefulset.apps/postgres created
+statefulset.apps/redis created
+statefulset.apps/rabbitmq created
+✓ DAY 3 CHECKPOINT PASSED — 29/29 checks
+
+==> Deploying Day 4
+secret/axispay-tls created
+ingress.networking.k8s.io/axispay-api created
+ingress.networking.k8s.io/axispay-portal created
+networkpolicy.networking.k8s.io/default-deny-all created
+networkpolicy.networking.k8s.io/allow-ingress-controller created
+networkpolicy.networking.k8s.io/allow-core-to-data created
+✓ DAY 4 CHECKPOINT PASSED — ingress, DNS and segmentation healthy
+
+==> Deploying Day 5
+serviceaccount/edge-gateway created
+serviceaccount/auth-service created
+serviceaccount/payment-service created
+serviceaccount/axispay-core-workload created
+serviceaccount/axispay-async-workload created
+serviceaccount/node-agent created
+clusterrole.rbac.authorization.k8s.io/axispay-auditor created
+role.rbac.authorization.k8s.io/axispay-deployer created
+role.rbac.authorization.k8s.io/axispay-oncall created
+clusterrole.rbac.authorization.k8s.io/axispay-prometheus created
+clusterrole.rbac.authorization.k8s.io/axispay-node-reader created
+rolebinding.rbac.authorization.k8s.io/axispay-auditor created
+rolebinding.rbac.authorization.k8s.io/axispay-deployer created
+rolebinding.rbac.authorization.k8s.io/axispay-oncall created
+clusterrolebinding.rbac.authorization.k8s.io/axispay-prometheus created
+clusterrolebinding.rbac.authorization.k8s.io/axispay-node-agent created
+namespace/axispay-core configured
+namespace/axispay-edge configured
+namespace/axispay-async configured
+namespace/axispay-data configured
+namespace/axispay-ops configured
+namespace/axispay-observability created
+servicemonitor.monitoring.coreos.com/axispay-edge created
+servicemonitor.monitoring.coreos.com/axispay-core created
+servicemonitor.monitoring.coreos.com/axispay-async created
+servicemonitor.monitoring.coreos.com/axispay-ops created
+prometheusrule.monitoring.coreos.com/axispay-slo created
+alertmanagerconfig.monitoring.coreos.com/axispay-routing created
+configmap/axispay-dashboard-platform created
+configmap/axispay-dashboard-triage created
+networkpolicy.networking.k8s.io/default-deny-all created
+networkpolicy.networking.k8s.io/allow-dns-egress created
+networkpolicy.networking.k8s.io/allow-prometheus-scrape created
+networkpolicy.networking.k8s.io/allow-node-agent-to-apiserver created
+networkpolicy.networking.k8s.io/allow-observability-internal created
+networkpolicy.networking.k8s.io/allow-observability-egress created
+deployment.apps/alert-sink created
+serviceaccount/alert-sink created
+service/alert-sink created
+servicemonitor.monitoring.coreos.com/axispay-observability created
+
+Cluster
+----------------------------------------------------------------
+  ✓ 1/1 nodes Ready
+  ✓ Calico present — NetworkPolicy is actually enforced
+
+Namespaces
+----------------------------------------------------------------
+  ✓ axispay-edge
+  ✓ axispay-core
+  ✓ axispay-ops
+  ✓ axispay-async
+  ✓ axispay-data
+  ✓ axispay-observability
+
+Day 5 — identity, packaging and observability
+----------------------------------------------------------------
+  ✓ no workload uses the default ServiceAccount
+  ✓ Pod Security checked on the application namespaces
+  ✓ RBAC assertions hold
+  ✓ chart assertions hold
+  ✓ PromQL assertions hold
+  ✓ Prometheus Operator installed
+
+End-to-end — a payment still works
+----------------------------------------------------------------
+  ✓ payment accepted through the Ingress (201)
+
+✓ DAY 5 CHECKPOINT PASSED — 50/50 checks
+```
+
+On a fresh rebuild, Day 5 usually pauses longest around observability and the final checkpoint, because Prometheus targets, dashboards, and alerting objects all need time to settle.
+
+**Warning:** this command is destructive. It deletes everything in the AxisPay namespaces, including current workloads, Secrets, PVCs, and all metrics/log history inside the observability namespace. Only run it when you are fine losing the current state.
+
+There is no Day 6 rebuild target to point to after this — `make rebuild-day5` is the complete platform.
+
 ## What success looks like
 
 By the end of Day 5, you should be able to say all of these out loud and prove them with commands:

@@ -119,6 +119,30 @@ deploy-day5: ## Deploy the Day 5 end-state (requires Day 4)
 .PHONY: deploy-all
 deploy-all: deploy-day1 deploy-day2 deploy-day3 deploy-day4 deploy-day5 ## Deploy the entire platform
 
+# ---- Disaster recovery / rebuild-from-scratch
+#
+# WHY THIS EXISTS: re-applying an older day's manifest on top of a cluster
+# that has already moved forward (e.g. re-applying Day 1's payment-service
+# after Day 2/3 changed its env vars) can fail with a strategic-merge error
+# such as:
+#   spec.template.spec.containers[0].env[0].valueFrom: Invalid value: ""
+# That happens because kubectl's 3-way merge gets confused between the live
+# object, the last-applied-configuration annotation, and your new file.
+# The fix is to DELETE the drifted namespaces first, so there is nothing to
+# merge against, then reapply cleanly from Day 1 forward.
+.PHONY: reset-platform
+reset-platform: ## DESTROYS all AxisPay namespaces so the platform can be rebuilt from scratch
+	$(call banner,"Deleting all AxisPay namespaces — this removes every workload, PVC and secret")
+	@$(K) delete ns axispay-edge axispay-core axispay-async axispay-ops axispay-data axispay-observability --ignore-not-found
+	@echo "Namespaces removed. Run 'make rebuild-day1' (or rebuild-day2 / day3 / day4 / day5) to recreate the platform."
+
+.PHONY: rebuild-day1 rebuild-day2 rebuild-day3 rebuild-day4 rebuild-day5
+rebuild-day1: reset-platform deploy-day1 ## Wipe the cluster and recreate the Day 1 end-state only
+rebuild-day2: reset-platform deploy-day1 deploy-day2 ## Wipe the cluster and recreate Day 1 + Day 2
+rebuild-day3: reset-platform deploy-day1 deploy-day2 deploy-day3 ## Wipe the cluster and recreate Day 1 + Day 2 + Day 3
+rebuild-day4: reset-platform deploy-day1 deploy-day2 deploy-day3 deploy-day4 ## Wipe the cluster and recreate Day 1 through Day 4
+rebuild-day5: reset-platform deploy-day1 deploy-day2 deploy-day3 deploy-day4 deploy-day5 ## Wipe the cluster and recreate the full Day 1 through Day 5 platform
+
 .PHONY: seed
 seed: ## Apply database schema and load seed data
 	$(call banner,"Seeding the AxisPay database")
