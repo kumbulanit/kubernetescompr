@@ -97,6 +97,14 @@ If `kubectl get pods -A -l app.kubernetes.io/part-of=axispay` returns nothing, f
 4. Compare your terminal output with the expected transcripts in the lab.
 5. Run the validation command for that lab before moving on.
 
+If you want to replay the whole Day 5 state from the repo, use the Day 5 apply script instead of a raw recursive `kubectl apply`:
+
+```bash
+bash days/day5/apply-all.sh
+```
+
+That script installs the observability stack first so the `ServiceMonitor`, `PrometheusRule`, and `AlertmanagerConfig` CRDs exist before the Day 5 manifests are applied.
+
 Validation commands you will use repeatedly:
 
 ```bash
