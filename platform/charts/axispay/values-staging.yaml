@@ -1,5 +1,5 @@
 # ==============================================================================
-# STAGING — production's shape at a fraction of its size
+# L5.3 / L5.4 — STAGING override values
 # ==============================================================================
 # Staging exists to catch what dev cannot: rollout behaviour, policy
 # enforcement, probe timing under real latency. So the STRUCTURE matches

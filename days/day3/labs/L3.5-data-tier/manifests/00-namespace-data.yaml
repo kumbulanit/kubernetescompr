@@ -1,3 +1,13 @@
+# ==============================================================================
+# L3.5 — Data tier
+# ==============================================================================
+# This manifest creates the dedicated namespace for Day 3 stateful services:
+# PostgreSQL, Redis and RabbitMQ.
+#
+# Separating the data tier into its own namespace makes it easier to reason about
+# ownership, policies and credentials. Students should notice that Kubernetes gives
+# you a lightweight boundary long before you need separate clusters.
+# ==============================================================================
 apiVersion: v1
 kind: Namespace
 metadata:

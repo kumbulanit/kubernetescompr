@@ -1,5 +1,5 @@
 {{/*
-A Service per enabled workload. The Service name is what other services put in
+L5.3 / L5.4 — A Service per enabled workload. The Service name is what other services put in
 their URLs, so it is deliberately STABLE and independent of the Deployment —
 you can replace the workload behind a Service without touching a single caller.
 */}}
@@ -21,6 +21,7 @@ spec:
   ports:
     - name: http
       port: 8080
+      # targetPort by NAME keeps the Service stable even if the numeric container port changes later.
       targetPort: http
       protocol: TCP
 {{- end }}

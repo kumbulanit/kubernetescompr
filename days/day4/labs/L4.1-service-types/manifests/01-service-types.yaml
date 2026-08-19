@@ -1,3 +1,14 @@
+# ==============================================================================
+# L4.1 — Service types
+# ==============================================================================
+# This lab creates three different Service shapes: a NodePort, an
+# ExternalName, and a headless Service.
+#
+# The point is not to memorise the names. The point is to notice that all
+# three answer different networking problems: exposing traffic from outside
+# the cluster, pointing at something outside Kubernetes, or publishing pod
+# identities directly instead of hiding them behind one virtual IP.
+# ==============================================================================
 apiVersion: v1
 kind: Service
 metadata:
@@ -5,14 +16,19 @@ metadata:
   namespace: axispay-edge
 spec:
   type: NodePort
+  # A NodePort opens the Service on every node IP. In Minikube this gives
+  # students a simple way to reach the app from outside the cluster.
   selector:
+    # A Service finds backing pods by label; it does not "contain" pods.
     app.kubernetes.io/name: edge-gateway
     app.kubernetes.io/instance: axispay
   ports:
-  - name: http
-    port: 8080
-    targetPort: http
-    nodePort: 30080
+    - name: http
+      port: 8080
+      # targetPort points at the container port named "http" on the pods.
+      targetPort: http
+      # Fixing the node port makes the demo URL predictable for the lab.
+      nodePort: 30080
 ---
 apiVersion: v1
 kind: Service
@@ -21,6 +37,8 @@ metadata:
   namespace: axispay-core
 spec:
   type: ExternalName
+  # ExternalName is just a DNS alias. Kubernetes does not create pods,
+  # proxies, or a cluster IP for it.
   externalName: acquirer.meridian.example.com
 ---
 apiVersion: v1
@@ -29,11 +47,15 @@ metadata:
   name: payment-service-headless
   namespace: axispay-core
 spec:
+  # clusterIP: None makes this headless: clients resolve pod IPs directly
+  # instead of going through one virtual Service IP.
   clusterIP: None
   selector:
+    # This still selects the payment-service pods; headless changes the
+    # DNS behaviour, not the label matching behaviour.
     app.kubernetes.io/name: payment-service
     app.kubernetes.io/instance: axispay
   ports:
-  - name: http
-    port: 8080
-    targetPort: http
+    - name: http
+      port: 8080
+      targetPort: http

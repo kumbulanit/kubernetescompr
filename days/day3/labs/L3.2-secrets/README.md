@@ -20,6 +20,29 @@
 
 ---
 
+## What this concept means
+
+A Kubernetes `Secret` is for configuration data that is sensitive, such as passwords, tokens, and signing keys. For a Java developer, the easiest analogy is an external credentials store: the application still receives key/value data, but the platform marks it as something that should be handled more carefully than normal config.
+
+A `Secret` is not the same thing as encryption. In YAML and API responses, Secret values are base64-encoded, which only changes the format so binary data can travel safely. If someone is allowed to read the Secret, they can decode it. The reason Secrets exist as a separate object type is mostly about intent, access control, audit rules, and operational handling.
+
+The basic lifecycle is simple: create the Secret, reference it from a pod as an environment variable or mounted file, let Kubernetes present it to the container, and rotate it when the value changes. If the Secret is consumed as env vars, applications usually need a restart to pick up the new value.
+
+```mermaid
+sequenceDiagram
+  participant Ops as Operator
+  participant K8s as Kubernetes API
+  participant Pod as Pod spec
+  participant App as Container
+  Ops->>K8s: Create Secret
+  Pod->>K8s: Reference secretKeyRef / volume
+  K8s->>App: Present secret value at runtime
+  Ops->>K8s: Update or rotate Secret
+  Note over App: Restart often needed for env-var consumers
+```
+
+---
+
 ## What you are going to do
 
 A Secret is for values that are **sensitive**, not values that are simply convenient.

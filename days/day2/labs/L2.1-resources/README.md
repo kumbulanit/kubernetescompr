@@ -21,6 +21,25 @@
 
 ---
 
+## What this concept means
+
+Every container needs CPU time and memory, but Kubernetes cannot guess how much. A **request** is the amount you tell the scheduler to reserve when deciding which node can fit the pod. A **limit** is the hard ceiling enforced later at runtime. For a Java developer, the closest mental model is: request = the capacity you promise you need, limit = the line you must not cross.
+
+CPU and memory behave differently at that ceiling. If a container goes over its **CPU limit**, the kernel slows it down by throttling it. If it goes over its **memory limit**, the kernel kills it immediately. That is why memory limits feel more like a hard `-Xmx` boundary, while CPU limits feel more like being rate-limited.
+
+The important split is that **requests are for scheduling** and **limits are for enforcement**. If requests are too low, Kubernetes may pack too many pods onto one node. If limits are missing or far too high, one noisy service can hurt everything around it.
+
+```mermaid
+flowchart LR
+  P[Pod declares<br/>requests + limits] --> S[Scheduler]
+  S -->|uses requests| N[Choose a node<br/>with enough room]
+  P --> K[Kubelet + kernel]
+  K -->|CPU over limit| T[Throttle container]
+  K -->|Memory over limit| O[Kill container<br/>OOMKilled]
+```
+
+---
+
 ## What you are going to do
 
 Right now every AxisPay pod is running with **no resource settings at all**. That means two things, both bad:

@@ -1,11 +1,22 @@
+# ==============================================================================
+# L4.6 — PodDisruptionBudgets for drain and maintenance
+# ==============================================================================
+# This lab creates disruption budgets for the key workloads so students can
+# see what `kubectl drain` is allowed to evict during planned maintenance.
+#
+# The lesson is that PDBs protect against VOLUNTARY disruption only: node
+# drains, cluster upgrades, or manual evictions. They do not stop crashes.
+# ==============================================================================
 apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:
   name: payment-service
   namespace: axispay-core
 spec:
+  # At most one payment-service pod may be voluntarily unavailable at once.
   maxUnavailable: 1
   selector:
+    # The selector decides which pods the budget is counting.
     matchLabels:
       app.kubernetes.io/name: payment-service
       app.kubernetes.io/instance: axispay
@@ -64,6 +75,8 @@ metadata:
   name: postgres
   namespace: axispay-data
 spec:
+  # minAvailable: 0 means maintenance is allowed to evict the single pod.
+  # This is a useful contrast with the protected stateless services above.
   minAvailable: 0
   selector:
     matchLabels:

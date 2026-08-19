@@ -1,3 +1,14 @@
+# ==============================================================================
+# L3.7 — Security context
+# ==============================================================================
+# This file patches the Day 3 application Deployments with a simple hardening
+# baseline: non-root execution, a default seccomp profile, dropped capabilities and
+# a temporary writable directory.
+#
+# What students should notice is that hardening is not one magic flag. Several small
+# settings work together, and one of them (readOnlyRootFilesystem) often forces you
+# to deliberately provide a scratch space such as /tmp.
+# ==============================================================================
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -7,27 +18,27 @@ spec:
   template:
     spec:
       securityContext:
-        runAsNonRoot: true
+        runAsNonRoot: true  # Kubelet fails the Pod if the image would need root.
         runAsUser: 10001
         runAsGroup: 10001
         fsGroup: 10001
         seccompProfile:
-          type: RuntimeDefault
+          type: RuntimeDefault  # Use the container runtime's safer syscall profile.
       containers:
       - name: edge-gateway
         securityContext:
-          allowPrivilegeEscalation: false
-          readOnlyRootFilesystem: true
+          allowPrivilegeEscalation: false  # Stops setuid/setgid style privilege jumps.
+          readOnlyRootFilesystem: true  # A compromised process cannot write into the image layer.
           capabilities:
             drop:
-            - ALL
+            - ALL  # Drop Linux capabilities instead of keeping the container defaults.
         volumeMounts:
         - name: tmp
           mountPath: /tmp
       volumes:
       - name: tmp
         emptyDir:
-          medium: Memory
+          medium: Memory  # Give the app a scratch directory without making the root FS writable.
           sizeLimit: 32Mi
 ---
 apiVersion: apps/v1

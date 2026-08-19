@@ -20,6 +20,25 @@
 
 ---
 
+## What this concept means
+
+A `StorageClass` is a template for making storage, not storage by itself. Think of it like a recipe: it says which provisioner to use, what reclaim policy to apply, and how binding should behave when a future claim asks for a disk.
+
+Without dynamic provisioning, someone has to create PVs ahead of time and hope they match what applications will request later. With a StorageClass, a PVC can ask for storage on demand and Kubernetes creates the backing volume when needed. That is the difference between static storage prepared in advance and dynamic storage created at request time.
+
+In this lab, `axispay-standard` uses `WaitForFirstConsumer`. That means Kubernetes can wait until a real pod needs the claim, let the scheduler choose the right node, and only then create or bind storage in the right place.
+
+```mermaid
+flowchart LR
+  SC[StorageClass<br/>axispay-standard] --> Recipe[provisioner + policy<br/>+ binding mode]
+  PVC[PersistentVolumeClaim] -->|uses storageClassName| SC
+  Recipe --> PV[dynamic PV created<br/>or selected]
+  PV --> Pod[Pod mounts storage]
+  Scheduler[Scheduler picks node] -. with WaitForFirstConsumer .-> PV
+```
+
+---
+
 ## What you are going to do
 
 The `StorageClass` in this lab is called `axispay-standard`.

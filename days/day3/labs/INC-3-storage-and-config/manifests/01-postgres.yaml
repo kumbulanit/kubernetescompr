@@ -1,10 +1,20 @@
+# ==============================================================================
+# INC-3 — Storage and config
+# ==============================================================================
+# This incident folder reuses the Day 3 PostgreSQL StatefulSet so students can debug
+# storage and configuration problems against a realistic stateful workload.
+#
+# It matters because incident response is easier when you already understand why a
+# StatefulSet needs stable DNS, persistent disks and config injected from Secrets and
+# ConfigMaps instead of being treated like a stateless web Deployment.
+# ==============================================================================
 apiVersion: v1
 kind: Service
 metadata:
   name: postgres
   namespace: axispay-data
 spec:
-  clusterIP: None
+  clusterIP: None  # Headless Service: gives stable DNS names to StatefulSet Pods.
   selector:
     app.kubernetes.io/name: postgres
     app.kubernetes.io/instance: axispay

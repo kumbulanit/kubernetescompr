@@ -1,3 +1,14 @@
+# ==============================================================================
+# L5.6 — The training alert receiver used to prove routing
+# ==============================================================================
+# This file creates a tiny in-cluster service called alert-sink. Alertmanager
+# sends webhooks here so students can SEE which route fired instead of assuming
+# the routing tree worked.
+#
+# Notice the same secure defaults from earlier labs: named ServiceAccount, no
+# token mount, non-root user, read-only root filesystem, and a small writable
+# emptyDir just for /tmp.
+# ==============================================================================
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -19,9 +30,11 @@ spec:
         app.kubernetes.io/part-of: axispay
     spec:
       serviceAccountName: alert-sink
+      # The sink receives HTTP posts; it does not need Kubernetes API credentials.
       automountServiceAccountToken: false
       terminationGracePeriodSeconds: 20
       securityContext:
+        # Pod-level settings establish the Unix user/group the container must run as.
         runAsNonRoot: true
         runAsUser: 10001
         runAsGroup: 10001
@@ -79,6 +92,7 @@ spec:
           timeoutSeconds: 3
           failureThreshold: 2
         securityContext:
+          # Container-level settings remove common privilege-escalation paths inside the process.
           allowPrivilegeEscalation: false
           readOnlyRootFilesystem: true
           capabilities:
@@ -86,6 +100,7 @@ spec:
             - ALL
         volumeMounts:
         - name: tmp
+          # /tmp stays writable even though the rest of the filesystem is read-only.
           mountPath: /tmp
       volumes:
       - name: tmp
@@ -107,6 +122,7 @@ metadata:
 spec:
   type: ClusterIP
   selector:
+    # The Service selector must match the pod template labels exactly, or Alertmanager posts to nowhere.
     app.kubernetes.io/name: alert-sink
     app.kubernetes.io/instance: axispay
   ports:

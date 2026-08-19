@@ -20,6 +20,26 @@
 
 ---
 
+## What this concept means
+
+A `ConfigMap` is Kubernetes' way to keep runtime configuration outside your application image. Think of it like an external `application.properties` file that lives next to the platform instead of being baked into your JAR or container. That lets you run the same image in different environments and change settings without rebuilding the app.
+
+Kubernetes can inject ConfigMap data into a pod in two common ways: as environment variables or as mounted files. Environment variables are simple and familiar for Java apps, but they are loaded when the container starts. If the ConfigMap changes later, the already-running process keeps the old values.
+
+Mounted files behave differently. Kubernetes can refresh the files on disk when the ConfigMap changes, so applications that re-read those files can see updates without a full restart. In this lab, `axispay-platform-config` shows the env-var pattern, while `axispay-fraud-rules` shows the file-style pattern.
+
+```mermaid
+flowchart LR
+  CM1[ConfigMap<br/>axispay-platform-config] --> ENV[env vars loaded<br/>at pod start]
+  ENV --> APP[payment-service]
+  CM2[ConfigMap<br/>axispay-fraud-rules] --> VOL[mounted file<br/>inside container]
+  VOL --> APP
+  CM2 -. config update .-> VOL
+  CM1 -. config update .-> SNAPSHOT[old env values stay<br/>until restart]
+```
+
+---
+
 ## What you are going to do
 
 You are going to create two ConfigMaps:

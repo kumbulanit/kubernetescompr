@@ -1,10 +1,19 @@
+# ==============================================================================
+# L3.5 — Data tier
+# ==============================================================================
+# This manifest creates PostgreSQL as a StatefulSet plus a headless Service.
+#
+# Students should notice why databases are treated differently from stateless web
+# services: they need stable network identity, persistent storage and a careful
+# startup sequence so data survives restarts.
+# ==============================================================================
 apiVersion: v1
 kind: Service
 metadata:
   name: postgres
   namespace: axispay-data
 spec:
-  clusterIP: None
+  clusterIP: None  # Headless Service: gives stable DNS names to StatefulSet Pods.
   selector:
     app.kubernetes.io/name: postgres
     app.kubernetes.io/instance: axispay
@@ -19,12 +28,13 @@ metadata:
   name: postgres
   namespace: axispay-data
 spec:
-  serviceName: postgres
+  serviceName: postgres  # Must match the headless Service that provides Pod DNS names.
   replicas: 1
-  podManagementPolicy: OrderedReady
+  podManagementPolicy: OrderedReady  # Start or replace Pods one at a time, in order.
   updateStrategy:
     type: RollingUpdate
   selector:
+    # Like a Deployment selector, this decides which Pods belong to the StatefulSet.
     matchLabels:
       app.kubernetes.io/name: postgres
       app.kubernetes.io/instance: axispay
@@ -38,12 +48,12 @@ spec:
         app.kubernetes.io/part-of: axispay
         axispay.io/day-introduced: '3'
     spec:
-      terminationGracePeriodSeconds: 60
+      terminationGracePeriodSeconds: 60  # Give PostgreSQL time to flush and shut down cleanly.
       securityContext:
-        runAsNonRoot: true
+        runAsNonRoot: true  # Refuse to start as UID 0.
         runAsUser: 999
         runAsGroup: 999
-        fsGroup: 999
+        fsGroup: 999  # Ensures the mounted volume is writable by the postgres process.
         fsGroupChangePolicy: OnRootMismatch
       containers:
       - name: postgres
@@ -54,9 +64,11 @@ spec:
           containerPort: 5432
         envFrom:
         - secretRef:
+            # Pulls POSTGRES_USER / POSTGRES_PASSWORD / POSTGRES_DB from one Secret.
             name: axispay-db-credentials
         env:
         - name: PGDATA
+          # Use a subdirectory so PostgreSQL can initialise cleanly on a mounted volume.
           value: /var/lib/postgresql/data/pgdata
         resources:
           requests:
@@ -74,6 +86,8 @@ spec:
             - -d
             - axispay
           periodSeconds: 5
+          # Databases can take longer to initialise than web apps, so startupProbe
+          # gives them a generous warm-up window before liveness checks begin.
           failureThreshold: 60
         livenessProbe:
           exec:
@@ -91,6 +105,8 @@ spec:
             command:
             - sh
             - -c
+            # Readiness checks whether the database can answer a real query, which is
+            # a stronger signal than "the process is running".
             - psql -U axispay_app -d axispay -c 'SELECT 1' >/dev/null 2>&1
           periodSeconds: 10
           timeoutSeconds: 5
@@ -99,6 +115,7 @@ spec:
         - name: data
           mountPath: /var/lib/postgresql/data
         - name: init
+          # PostgreSQL runs *.sql files from this directory on first initialisation.
           mountPath: /docker-entrypoint-initdb.d
           readOnly: true
       volumes:
@@ -113,7 +130,7 @@ spec:
     spec:
       accessModes:
       - ReadWriteOnce
-      storageClassName: axispay-standard
+      storageClassName: axispay-standard  # Ask Kubernetes to provision storage from the Day 3 class.
       resources:
         requests:
           storage: 5Gi

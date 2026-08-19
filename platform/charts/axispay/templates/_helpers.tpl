@@ -1,10 +1,11 @@
 {{/*
 ================================================================================
-AxisPay chart helpers
+L5.3 / L5.4 — AxisPay chart helpers
 ================================================================================
-Named templates exist for one reason: to make a rule true in every rendered
-object without relying on anyone remembering it. If a label selector is built
-in fifteen places it will be wrong in at least one of them.
+These helpers support the packaging and promotion labs. Named templates
+exist for one reason: to make a rule true in every rendered object without
+relying on anyone remembering it. If a label selector is built in fifteen
+places it will be wrong in at least one of them.
 ================================================================================
 */}}
 

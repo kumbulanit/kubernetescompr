@@ -20,6 +20,25 @@
 
 ---
 
+## What this concept means
+
+A Kubernetes `securityContext` is where you tell the platform what a pod or container is allowed to run as and what privileges it should have. For most Java services, root access is unnecessary. If the process only needs to listen on an application port and read its config, giving it root is extra risk without extra value.
+
+`runAsNonRoot: true` tells Kubernetes to refuse a pod that would start as root. `readOnlyRootFilesystem: true` makes the main container filesystem immutable, which limits what an attacker or a buggy process can change. Dropping Linux capabilities removes many of the small kernel-level powers that containers often receive by default.
+
+Pod-level settings such as `runAsUser` and `fsGroup` define the baseline identity for the workload. Container-level settings such as `allowPrivilegeEscalation: false` and dropped capabilities further tighten each process. Together, these settings turn "it runs" into "it runs with fewer ways to hurt the cluster."
+
+```mermaid
+flowchart LR
+  PodSpec[Pod spec] --> PodCtx[Pod securityContext<br/>runAsNonRoot<br/>runAsUser/fsGroup]
+  PodSpec --> Ctx[Container securityContext<br/>readOnlyRootFilesystem<br/>drop ALL caps<br/>allowPrivilegeEscalation false]
+  PodCtx --> App[Java process]
+  Ctx --> App
+  App --> Outcome[less privilege<br/>smaller blast radius]
+```
+
+---
+
 ## What you are going to do
 
 This lab applies the same hardening pattern to several AxisPay Deployments:

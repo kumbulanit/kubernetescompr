@@ -1,3 +1,12 @@
+# ==============================================================================
+# L5.2 — Attaching identities to RBAC roles
+# ==============================================================================
+# Bindings are the third step in the RBAC chain:
+#   ServiceAccount or user/group  ->  Role/ClusterRole  ->  allowed actions
+#
+# A Role or ClusterRole sitting alone grants nothing. The binding is the wiring
+# that makes the permission set real for one caller.
+# ==============================================================================
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
@@ -8,6 +17,7 @@ subjects:
   name: auditor@axis.example
   apiGroup: rbac.authorization.k8s.io
 roleRef:
+  # Re-using one ClusterRole through many RoleBindings is how you keep read-only policy consistent.
   kind: ClusterRole
   name: axispay-auditor
   apiGroup: rbac.authorization.k8s.io
@@ -47,6 +57,7 @@ metadata:
   namespace: axispay-core
 subjects:
 - kind: Group
+  # Groups let you grant the same operational rights to a team instead of one named person.
   name: axispay-platform-team
   apiGroup: rbac.authorization.k8s.io
 roleRef:
@@ -77,6 +88,7 @@ subjects:
   name: prometheus
   namespace: axispay-observability
 roleRef:
+  # ClusterRoleBinding is required because Prometheus scrapes across namespace boundaries.
   kind: ClusterRole
   name: axispay-prometheus
   apiGroup: rbac.authorization.k8s.io

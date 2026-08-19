@@ -1,5 +1,5 @@
 {{/*
-Two Ingress objects, not one with two rules — so the merchant API and the
+L5.3 / L5.4 — Two Ingress objects, not one with two rules — so the merchant API and the
 internal reporting portal can carry different rate limits and be revoked
 independently. A single object means one mistake takes both down.
 */}}
@@ -14,6 +14,7 @@ metadata:
   labels:
     {{- include "axispay.labels" $ | nindent 4 }}
   annotations:
+    # Rate limits live on the Ingress because this is where NGINX can protect the service before traffic reaches the pods.
     nginx.ingress.kubernetes.io/ssl-redirect: {{ $.Values.ingress.sslRedirect | quote }}
     nginx.ingress.kubernetes.io/limit-rps: {{ $ing.rateLimitRps | quote }}
     nginx.ingress.kubernetes.io/proxy-body-size: "1m"

@@ -1,13 +1,25 @@
+# ==============================================================================
+# L4.4 — NetworkPolicy default deny
+# ==============================================================================
+# This lab starts by creating a "locked down" baseline in the core, data,
+# and async namespaces.
+#
+# The important lesson is that NetworkPolicy is additive. Once a namespace
+# has a default deny, traffic only works again when another policy allows
+# the specific direction, source, and port you need.
+# ==============================================================================
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: default-deny-all
   namespace: axispay-core
 spec:
+  # An empty selector means "all pods in this namespace".
   podSelector: {}
   policyTypes:
-  - Ingress
-  - Egress
+    # Listing both directions turns on isolation for ingress AND egress.
+    - Ingress
+    - Egress
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -17,8 +29,8 @@ metadata:
 spec:
   podSelector: {}
   policyTypes:
-  - Ingress
-  - Egress
+    - Ingress
+    - Egress
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -28,5 +40,5 @@ metadata:
 spec:
   podSelector: {}
   policyTypes:
-  - Ingress
-  - Egress
+    - Ingress
+    - Egress

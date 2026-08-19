@@ -1,5 +1,5 @@
 {{/*
-Default-deny per namespace, then the specific allows.
+L5.3 / L5.6 — Default-deny per namespace, then the specific allows.
 
 Two facts drive the shape of this file:
   1. A pod is default-ALLOW until a policy selects it. The empty podSelector
@@ -43,6 +43,7 @@ metadata:
   labels:
     {{- include "axispay.labels" $ | nindent 4 }}
 spec:
+  # Empty podSelector means every pod in the namespace is covered by the baseline.
   podSelector: {}
   policyTypes: [Ingress]
   ingress:

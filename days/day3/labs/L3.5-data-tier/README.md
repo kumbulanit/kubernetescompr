@@ -20,6 +20,30 @@
 
 ---
 
+## What this concept means
+
+A real application's data tier is more than "run a database container." It combines storage, network identity, credentials, and startup configuration so other services can find it and trust it. For a Java team, this is the platform equivalent of standing up PostgreSQL, Redis, and RabbitMQ with the right hostnames, disks, and secrets before the application can work.
+
+Data-bearing workloads need more care than stateless web services. If a web pod dies, Kubernetes can usually replace it with another identical pod. If a database pod dies, you also care about its disk, its stable name, whether it starts in the right order, and whether clients reconnect to the correct endpoint.
+
+In this lab, each service combines the same building blocks in a slightly different way: a headless Service for identity, a StatefulSet for ordered pods, a PVC for persistent data, and ConfigMap or Secret inputs for initialization and credentials.
+
+```mermaid
+flowchart LR
+  Apps[AxisPay services] --> PG[postgres Service + StatefulSet]
+  Apps --> Redis[redis Service + StatefulSet]
+  Apps --> MQ[rabbitmq Service + StatefulSet]
+  PG --> PGPVC[PVC + persistent disk]
+  Redis --> RedisPVC[PVC + persistent disk]
+  MQ --> MQPVC[PVC + persistent disk]
+  Secret[Secrets] --> PG
+  Secret --> Redis
+  Secret --> MQ
+  Config[ConfigMap postgres-init] --> PG
+```
+
+---
+
 ## What you are going to do
 
 In Day 1 and Day 2 the platform was mostly application code. In this lab you add the platform services that make real payment processing possible:

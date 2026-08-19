@@ -21,6 +21,31 @@
 
 ---
 
+## What this concept means
+
+A **Pod** is the smallest thing Kubernetes can deploy. Most pods contain one container, but the real idea is "one or more containers that must live together" — sharing the same IP address, the same `localhost`, and optionally shared storage. For a Java developer, a pod is closer to a lightweight process group than to a single raw container.
+
+That wrapper matters because some helpers only make sense beside the main app: a proxy, a log shipper, or a tiny setup container. Kubernetes schedules the whole pod as one unit, so those pieces stay together on the same node.
+
+A **bare pod** is useful for learning, but fragile in real life. If the node dies, the process crashes, or someone deletes the pod, nothing recreates it. There is no controller behind it saying, "there should still be one of these."
+
+```mermaid
+flowchart TB
+  subgraph Pod[Pod]
+    C1[app container]
+    C2[helper container]
+    N[shared IP + localhost]
+    V[shared volume]
+    C1 --- N
+    C2 --- N
+    C1 --- V
+    C2 --- V
+  end
+  X[bare pod deleted or node lost] --> Y[no controller<br/>no replacement]
+```
+
+---
+
 ## What you are going to do
 
 You are going to run the AxisPay payment service for the first time — as a single **pod**, which is the simplest thing Kubernetes can run.

@@ -1,17 +1,31 @@
+# ==============================================================================
+# L5.6 — Alert rules for service health and business symptoms
+# ==============================================================================
+# This manifest creates the PrometheusRule used in the observability labs.
+# The rules deliberately alert on outcomes a merchant would notice — error rate,
+# latency, zero ready endpoints, missed reconciliation — rather than on noisy
+# causes like CPU alone.
+#
+# Watch the `for:` fields. They are the debounce timers that stop one bad scrape
+# or one short spike from paging a human.
+# ==============================================================================
 apiVersion: monitoring.coreos.com/v1
 kind: PrometheusRule
 metadata:
   name: axispay-slo
   namespace: axispay-observability
 spec:
+  # Groups let related alerts share an evaluation cadence and stay readable.
   groups:
   - name: axispay.availability
     interval: 30s
     rules:
+    # Availability rules answer the question: can merchants complete payments right now?
     - alert: AxisPayPaymentErrorRateHigh
       expr: "(\n  sum(rate(axispay_http_requests_total{service=\"payment-service\"\
         ,status=~\"5..\"}[5m]))\n  /\n  sum(rate(axispay_http_requests_total{service=\"\
         payment-service\"}[5m]))\n) > 0.005\n"
+      # Wait 5 minutes so a brief burst of failures does not page the team.
       for: 5m
       labels:
         severity: critical
@@ -23,6 +37,7 @@ spec:
     - alert: AxisPayPaymentLatencyHigh
       expr: "histogram_quantile(0.99,\n  sum by (le) (rate(axispay_http_request_duration_seconds_bucket{service=\"\
         payment-service\"}[5m]))\n) > 0.3\n"
+      # Latency must stay bad for long enough to prove a trend, not a blip.
       for: 10m
       labels:
         severity: warning
@@ -46,6 +61,7 @@ spec:
           getting connection refused.
         runbook_url: https://runbooks.axis.example/axispay/no-endpoints
   - name: axispay.workloads
+    # Workload alerts are closer to causes: crash loops, OOM kills, or an HPA out of headroom.
     interval: 30s
     rules:
     - alert: AxisPayPodCrashLooping
@@ -103,6 +119,7 @@ spec:
         description: The ledger has not been reconciled. Settlement figures are unverified.
         runbook_url: https://runbooks.axis.example/axispay/recon-missed
   - name: axispay.business
+    # Business alerts catch failures infrastructure metrics can miss, like traffic silently dropping to zero.
     interval: 60s
     rules:
     - alert: AxisPayNoPaymentsReceived

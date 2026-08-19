@@ -1,3 +1,14 @@
+# ==============================================================================
+# L5.6 — Alertmanager routing and noise reduction
+# ==============================================================================
+# This AlertmanagerConfig tells Alertmanager where each class of alert should go.
+# The routing tree maps labels like severity=critical or team=payments to the
+# correct receiver, while inhibit rules stop one outage from generating a page
+# storm.
+#
+# The key lesson is that alerting is not only "when do we fire?". It is also
+# "who gets called, how quickly, and how do we avoid duplicate noise?".
+# ==============================================================================
 apiVersion: monitoring.coreos.com/v1alpha1
 kind: AlertmanagerConfig
 metadata:
@@ -5,11 +16,13 @@ metadata:
   namespace: axispay-observability
 spec:
   route:
+    # The top-level receiver is the fallback when no child route matches.
     receiver: platform-default
     groupBy:
     - alertname
     - namespace
     - severity
+    # Grouping sends one notification about a shared problem instead of ten near-identical ones.
     groupWait: 30s
     groupInterval: 5m
     repeatInterval: 4h
@@ -20,6 +33,7 @@ spec:
         value: critical
       - name: team
         value: payments
+      # Payment incidents are customer-facing, so the wait is shorter here.
       groupWait: 10s
       repeatInterval: 1h
       continue: false
@@ -45,6 +59,7 @@ spec:
     targetMatch:
     - name: alertname
       value: AxisPayPaymentErrorRateHigh
+    # If a service has zero ready endpoints, the error-rate alert is just a symptom of the same outage.
     equal:
     - namespace
   - sourceMatch:
@@ -77,6 +92,7 @@ spec:
   - name: platform-default
     webhookConfigs:
     - url: http://alert-sink.axispay-observability.svc.cluster.local:8080/alerts/platform
+      # sendResolved means the receiver sees both "problem started" and "problem cleared".
       sendResolved: true
   - name: platform-oncall
     webhookConfigs:

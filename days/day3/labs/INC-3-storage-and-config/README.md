@@ -20,6 +20,31 @@
 
 ---
 
+## What this concept means
+
+This incident mixes two Day 3 ideas on purpose. On the storage side, PostgreSQL depends on the full chain of `StatefulSet` identity, PVC request, and real storage behind a PV or dynamic provisioner. If that chain breaks, the pod can get stuck in `Pending` before the database process even has a chance to start.
+
+On the configuration side, applications read ordinary settings from `ConfigMaps` and sensitive values from `Secrets`. That data is injected as environment variables or mounted files. A single wrong key name, wrong hostname, or stale env-var value can leave a pod `Running` but still not `Ready`, because the process starts and then fails its own health checks.
+
+The lesson for incident work is that loud infrastructure faults and quiet application misconfigurations need different evidence. PVC events explain storage failures; pod environment, mounted config, and logs explain config failures. In this lab you need both mental models at the same time.
+
+```mermaid
+flowchart TD
+  Incident[INC-3] --> Storage[Storage path]
+  Incident --> Config[Config path]
+  Storage --> STS[StatefulSet postgres]
+  STS --> PVC[data-postgres-0 PVC]
+  PVC --> SC[StorageClass / PV]
+  Config --> CM[ConfigMap values]
+  Config --> Secret[Secret values]
+  CM --> Ledger[ledger-service]
+  Secret --> Ledger
+  Storage --> PG[postgres-0]
+  PG --> Ledger
+```
+
+---
+
 ## Read this before you start
 
 This incident is deliberately unfair in a realistic way.

@@ -1,8 +1,23 @@
+# ==============================================================================
+# L3.3 — Persistent Volumes
+# ==============================================================================
+# This manifest defines the StorageClass used by Day 3 data workloads when they ask
+# Kubernetes to create storage for them automatically.
+#
+# The main thing to notice is that storage is not just "give me disk". A
+# StorageClass captures behaviour such as when a volume is created, whether it can
+# grow later, and what should happen to the data after a claim is deleted.
+# ==============================================================================
 apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
   name: axispay-standard
+# Minikube uses a simple hostPath provisioner so the labs work on one local cluster.
 provisioner: k8s.io/minikube-hostpath
+# Retain keeps the underlying data around after the PVC is deleted, which is useful
+# in a training lab because students can inspect what happened instead of losing it.
 reclaimPolicy: Retain
+# Wait until a Pod actually uses the claim before choosing backing storage. This
+# matters more in multi-node clusters, where the chosen node can affect scheduling.
 volumeBindingMode: WaitForFirstConsumer
-allowVolumeExpansion: true
+allowVolumeExpansion: true  # Lets a PVC request more space later without recreating it.

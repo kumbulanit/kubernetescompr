@@ -1,5 +1,5 @@
 # ==============================================================================
-# DEVELOPMENT — a laptop, one engineer, fast feedback
+# L5.3 / L5.4 — DEVELOPMENT override values
 # ==============================================================================
 # What gets relaxed here and WHY. Every line is a deliberate trade, not an
 # oversight; the same relaxation in values-prod.yaml would be a finding.

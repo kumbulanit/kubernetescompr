@@ -1,5 +1,5 @@
 {{/*
-Reconciliation runs nightly and must finish before the settlement window.
+L5.3 / L5.4 — Reconciliation runs nightly and must finish before the settlement window.
 
 timeZone is not decoration. Without it the schedule is UTC, and twice a year
 the job silently moves an hour relative to the business day it reconciles.
@@ -23,6 +23,7 @@ spec:
   schedule: {{ $cj.schedule | quote }}
   timeZone: {{ $cj.timeZone | quote }}
   concurrencyPolicy: {{ $cj.concurrencyPolicy }}
+  # If the controller misses the schedule for longer than this, skip the run instead of replaying stale work.
   startingDeadlineSeconds: {{ $cj.startingDeadlineSeconds }}
   successfulJobsHistoryLimit: {{ $cj.successfulJobsHistoryLimit }}
   failedJobsHistoryLimit: {{ $cj.failedJobsHistoryLimit }}

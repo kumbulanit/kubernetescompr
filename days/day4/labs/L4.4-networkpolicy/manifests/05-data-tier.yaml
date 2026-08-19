@@ -1,24 +1,35 @@
+# ==============================================================================
+# L4.4 — NetworkPolicy protection for the data tier
+# ==============================================================================
+# This policy says who may talk INTO the data namespace once it has been
+# isolated by default deny.
+#
+# The key lesson is that data stores should not be publicly reachable. Only
+# the namespaces that genuinely depend on them get an allow rule.
+# ==============================================================================
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: allow-core-and-async-to-data
   namespace: axispay-data
 spec:
+  # Apply the same inbound rule to every pod in the data namespace.
   podSelector: {}
   policyTypes:
-  - Ingress
+    - Ingress
   ingress:
-  - from:
-    - namespaceSelector:
-        matchLabels:
-          axispay.io/zone: core
-    - namespaceSelector:
-        matchLabels:
-          axispay.io/zone: async
-    ports:
-    - protocol: TCP
-      port: 5432
-    - protocol: TCP
-      port: 6379
-    - protocol: TCP
-      port: 5672
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              axispay.io/zone: core
+        - namespaceSelector:
+            matchLabels:
+              axispay.io/zone: async
+      ports:
+        # Allow only the ports used by the training data services.
+        - protocol: TCP
+          port: 5432
+        - protocol: TCP
+          port: 6379
+        - protocol: TCP
+          port: 5672

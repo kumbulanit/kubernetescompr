@@ -1,5 +1,5 @@
 # ==============================================================================
-# PRODUCTION — real merchants, real money, real regulator
+# L5.3 / L5.4 — PRODUCTION override values
 # ==============================================================================
 # Nothing here is relaxed. Where a value differs from the default it is
 # TIGHTER, not looser. Read this file as the answer to "what does the platform

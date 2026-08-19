@@ -1,9 +1,21 @@
+# ==============================================================================
+# L5.6 — NetworkPolicy rules for the observability stack
+# ==============================================================================
+# This lab tightens the observability namespaces with explicit allow rules.
+# NetworkPolicy is easier to understand when you remember two facts:
+#   1. once a policy selects a pod, traffic is denied unless some rule allows it
+#   2. policies are additive — you do not write "deny X", you only write allows
+#
+# Watch the DNS and kubelet exceptions. They are the non-obvious paths people
+# forget first, and then everything looks broken for confusing reasons.
+# ==============================================================================
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
   name: default-deny-all
   namespace: axispay-ops
 spec:
+  # Empty selector means "every pod in this namespace".
   podSelector: {}
   policyTypes:
   - Ingress
@@ -48,6 +60,7 @@ spec:
           kubernetes.io/metadata.name: axispay-observability
     ports:
     - protocol: TCP
+      # Prometheus scrapes the application's /metrics endpoint over the normal service port.
       port: 8080
 ---
 apiVersion: networking.k8s.io/v1
@@ -64,6 +77,7 @@ spec:
   egress:
   - to:
     - ipBlock:
+        # The API server is not a pod in this namespace, so an IP block is the practical selector here.
         cidr: 192.168.49.0/24
     ports:
     - protocol: TCP
@@ -91,6 +105,7 @@ spec:
           kubernetes.io/metadata.name: ingress-nginx
     ports:
     - protocol: TCP
+      # Grafana is intentionally the one browser-facing exception inside the observability namespace.
       port: 3000
 ---
 apiVersion: networking.k8s.io/v1
@@ -127,6 +142,7 @@ spec:
           - axispay-ops
     ports:
     - protocol: TCP
+      # Prometheus, Grafana and Alertmanager talk to app metrics on 8080.
       port: 8080
   - to:
     - namespaceSelector:
@@ -143,6 +159,7 @@ spec:
           kubernetes.io/metadata.name: axispay-observability
   - to:
     - ipBlock:
+        # kubelet and API endpoints are node-level addresses, not pods selected by labels.
         cidr: 192.168.49.0/24
     ports:
     - protocol: TCP

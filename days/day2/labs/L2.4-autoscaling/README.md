@@ -21,6 +21,25 @@
 
 ---
 
+## What this concept means
+
+A **HorizontalPodAutoscaler (HPA)** is the Kubernetes controller that changes replica count when measured load moves up or down. Instead of a human running `kubectl scale`, the HPA watches metrics such as CPU usage and keeps comparing current load with a target value.
+
+For a Java developer, think of it like autoscaling an application tier behind a load balancer. If each pod is consistently too busy, Kubernetes asks the Deployment for more replicas; if the average load stays low for long enough, it asks for fewer. The Deployment still owns creating and deleting pods — the HPA just keeps adjusting the desired number.
+
+That last point matters: the HPA is built directly on the Day 1 reconciliation loop. The HPA changes `.spec.replicas`, and then the Deployment controller reconciles the actual pod count to match.
+
+```mermaid
+flowchart LR
+  M[Metrics server<br/>CPU usage] --> H[HPA]
+  H -->|set desired replicas| D[Deployment]
+  D -->|reconciliation loop| P[Pods]
+  P --> U[Average load drops or rises]
+  U --> M
+```
+
+---
+
 ## What you are going to do
 
 AxisPay gets busy at lunchtime and quiet at 3am. Running six replicas all night wastes money; running two at noon drops payments.

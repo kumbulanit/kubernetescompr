@@ -21,6 +21,24 @@
 
 ---
 
+## What this concept means
+
+`ImagePullBackOff` means Kubernetes asked the container runtime to fetch an image, but the image could not be pulled successfully. Common causes are a wrong image name, a tag that does not exist, a private registry that needs credentials, or simple registry/network trouble.
+
+The important detail is that your application container usually has **not started yet**. Kubernetes keeps retrying, but it waits longer between attempts — that is the "back-off" part. So the pod can sit there looking stuck when it is really failing, waiting, and trying again.
+
+This is one of the most common real-world Kubernetes errors because image references are easy to mistype and deployments depend completely on them. One bad tag is enough to turn a healthy rollout into a broken one.
+
+```mermaid
+flowchart LR
+  D[Deployment asks for image<br/>axispay/payment-service:tag] --> K[Kubelet / container runtime]
+  K --> R[Registry lookup]
+  R -->|image missing or auth fails| E[ErrImagePull]
+  E --> B[ImagePullBackOff<br/>retry with delay]
+```
+
+---
+
 ## Read this before you start
 
 Something in your cluster is about to be broken. **You will not be told what.**

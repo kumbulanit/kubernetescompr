@@ -21,6 +21,24 @@
 
 ---
 
+## What this concept means
+
+Once a cluster has many teams, you cannot rely on every developer to size containers perfectly every time. A **ResourceQuota** is a namespace-wide budget: it says how much CPU, memory, or how many objects the whole namespace may consume in total. A **LimitRange** works at the smaller scale: it sets defaults, minimums, or maximums for each pod or container.
+
+Think of it like platform guard rails in a shared Java platform. ResourceQuota is the team's total cloud budget; LimitRange is the rule that no single service may turn up with absurd JVM settings or no settings at all. One protects the namespace from the group; the other protects the group from each individual workload.
+
+These exist because platforms need predictable behavior, not trust. Good teams still make mistakes under time pressure, and governance at admission time is safer than finding out later during an outage.
+
+```mermaid
+flowchart TD
+  Team[Developer submits pod] --> LR[LimitRange<br/>per-pod defaults/min/max]
+  LR --> RQ[ResourceQuota<br/>namespace-wide budget]
+  RQ --> API[API server accepts or rejects]
+  API --> NS[Namespace resources stay sane]
+```
+
+---
+
 ## What you are going to do
 
 In L2.1 you set resources on six Deployments. Nothing forced you to. The seventh service someone adds next month will have none, and it will be `BestEffort`, and it will be the first thing killed when a node runs short.

@@ -1,3 +1,13 @@
+{{/*
+# ==============================================================================
+# L5.3 / L5.4 — Post-install notes for the AxisPay release
+# ==============================================================================
+# NOTES.txt is not applied to the cluster. Helm renders it for the operator at
+# the end of install/upgrade, so it is the right place for next-step checks and
+# the habits students should build: verify readiness, inspect endpoints, then
+# send a real request through the platform.
+# ==============================================================================
+*/}}
 {{ .Chart.Name }} {{ .Chart.Version }} — release {{ .Release.Name }}
 Environment: {{ .Values.global.environment }} · images {{ .Values.global.image.repository }}/*:{{ .Values.global.image.tag }}
 

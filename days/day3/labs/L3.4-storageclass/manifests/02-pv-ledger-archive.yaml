@@ -1,3 +1,12 @@
+# ==============================================================================
+# L3.4 — StorageClass
+# ==============================================================================
+# This companion manifest keeps one manually managed volume alongside the dynamic
+# StorageClass so students can compare the two approaches.
+#
+# The contrast to notice is that manual PVs are declared up front by the platform
+# team, while dynamic provisioning creates storage only when a claim is made.
+# ==============================================================================
 apiVersion: v1
 kind: PersistentVolume
 metadata:
@@ -6,12 +15,12 @@ spec:
   capacity:
     storage: 2Gi
   accessModes:
-  - ReadWriteOnce
+  - ReadWriteOnce  # Suits a single writer, which is the usual case for local disk.
   persistentVolumeReclaimPolicy: Retain
-  storageClassName: axispay-manual
+  storageClassName: axispay-manual  # Intentionally NOT axispay-standard: this volume is pre-created.
   hostPath:
     path: /mnt/axispay/ledger-archive
-    type: DirectoryOrCreate
+    type: DirectoryOrCreate  # Handy in a lab: create the directory if it does not already exist.
   nodeAffinity:
     required:
       nodeSelectorTerms:
@@ -32,4 +41,4 @@ spec:
   storageClassName: axispay-manual
   resources:
     requests:
-      storage: 1Gi
+      storage: 1Gi  # The claim binds because the PV offers at least this much space.

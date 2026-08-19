@@ -1,3 +1,14 @@
+# ==============================================================================
+# L4.4 — Edge namespace policy bundle
+# ==============================================================================
+# This file shows the extra rules the edge namespace needs after default
+# deny: DNS, ingress-controller access, calls into core, auth calls inside
+# the same namespace, and Prometheus scraping.
+#
+# It matters because the edge namespace sits on the boundary of the system.
+# If these paths are too open, the app is exposed; if they are too narrow,
+# the public entrypoint stops working.
+# ==============================================================================
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -6,8 +17,8 @@ metadata:
 spec:
   podSelector: {}
   policyTypes:
-  - Ingress
-  - Egress
+    - Ingress
+    - Egress
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -17,20 +28,20 @@ metadata:
 spec:
   podSelector: {}
   policyTypes:
-  - Egress
+    - Egress
   egress:
-  - to:
-    - namespaceSelector:
-        matchLabels:
-          kubernetes.io/metadata.name: kube-system
-      podSelector:
-        matchLabels:
-          k8s-app: kube-dns
-    ports:
-    - protocol: UDP
-      port: 53
-    - protocol: TCP
-      port: 53
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -39,18 +50,20 @@ metadata:
   namespace: axispay-edge
 spec:
   podSelector:
+    # Protect only the edge-gateway pods that sit behind the Ingress.
     matchLabels:
       app.kubernetes.io/name: edge-gateway
   policyTypes:
-  - Ingress
+    - Ingress
   ingress:
-  - from:
-    - namespaceSelector:
-        matchLabels:
-          kubernetes.io/metadata.name: ingress-nginx
-    ports:
-    - protocol: TCP
-      port: 8080
+    - from:
+        - namespaceSelector:
+            # The nginx controller lives in its own namespace.
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
+      ports:
+        - protocol: TCP
+          port: 8080
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -60,22 +73,23 @@ metadata:
 spec:
   podSelector: {}
   policyTypes:
-  - Egress
+    - Egress
   egress:
-  - to:
-    - namespaceSelector:
-        matchLabels:
-          axispay.io/zone: core
-    ports:
-    - protocol: TCP
-      port: 8080
-  - to:
-    - podSelector:
-        matchLabels:
-          app.kubernetes.io/name: auth-service
-    ports:
-    - protocol: TCP
-      port: 8080
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              axispay.io/zone: core
+      ports:
+        - protocol: TCP
+          port: 8080
+    - to:
+        - podSelector:
+            # No namespaceSelector here means the auth-service in axispay-edge.
+            matchLabels:
+              app.kubernetes.io/name: auth-service
+      ports:
+        - protocol: TCP
+          port: 8080
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -87,15 +101,17 @@ spec:
     matchLabels:
       app.kubernetes.io/name: auth-service
   policyTypes:
-  - Ingress
+    - Ingress
   ingress:
-  - from:
-    - podSelector:
-        matchLabels:
-          app.kubernetes.io/name: edge-gateway
-    ports:
-    - protocol: TCP
-      port: 8080
+    - from:
+        - podSelector:
+            # Because there is no namespaceSelector, only edge-gateway pods
+            # in the SAME namespace are allowed through.
+            matchLabels:
+              app.kubernetes.io/name: edge-gateway
+      ports:
+        - protocol: TCP
+          port: 8080
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -105,12 +121,12 @@ metadata:
 spec:
   podSelector: {}
   policyTypes:
-  - Ingress
+    - Ingress
   ingress:
-  - from:
-    - namespaceSelector:
-        matchLabels:
-          kubernetes.io/metadata.name: axispay-observability
-    ports:
-    - protocol: TCP
-      port: 8080
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: axispay-observability
+      ports:
+        - protocol: TCP
+          port: 8080

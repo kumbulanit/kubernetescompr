@@ -1,3 +1,12 @@
+# ==============================================================================
+# L5.6 — Metrics scrape discovery used alongside logs and alerts
+# ==============================================================================
+# The log and alert labs still depend on Prometheus scraping the application
+# services, because the alert routes only fire if these metrics exist.
+#
+# The point to notice is that ServiceMonitor selects Services, while the alert
+# rules later evaluate the time series those Services expose.
+# ==============================================================================
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
@@ -18,6 +27,7 @@ spec:
     metricRelabelings:
     - sourceLabels:
       - __name__
+      # Runtime housekeeping metrics are dropped so students focus on business and SLO signals.
       regex: python_gc_.*|process_.*
       action: drop
 ---
@@ -37,6 +47,7 @@ spec:
   - port: http
     path: /metrics
     interval: 15s
+    # The payment path is scraped faster so alerting sees trouble sooner.
     scrapeTimeout: 10s
     metricRelabelings:
     - sourceLabels:

@@ -1,10 +1,18 @@
+# ==============================================================================
+# L3.5 — Data tier
+# ==============================================================================
+# This manifest creates RabbitMQ as a StatefulSet plus a headless Service.
+#
+# Message brokers are another good example of "stateful" software: queues live on
+# disk, the broker needs credentials, and clients benefit from stable addresses.
+# ==============================================================================
 apiVersion: v1
 kind: Service
 metadata:
   name: rabbitmq
   namespace: axispay-data
 spec:
-  clusterIP: None
+  clusterIP: None  # Headless so rabbitmq-0.rabbitmq... stays stable across restarts.
   selector:
     app.kubernetes.io/name: rabbitmq
     app.kubernetes.io/instance: axispay
@@ -13,6 +21,7 @@ spec:
     port: 5672
     targetPort: amqp
   - name: management
+    # The management UI is exposed separately from the AMQP port used by applications.
     port: 15672
     targetPort: management
 ---
@@ -38,7 +47,7 @@ spec:
         app.kubernetes.io/part-of: axispay
         axispay.io/day-introduced: '3'
     spec:
-      terminationGracePeriodSeconds: 45
+      terminationGracePeriodSeconds: 45  # Brokers need a little time to flush queue state cleanly.
       securityContext:
         runAsNonRoot: true
         runAsUser: 999
@@ -47,6 +56,7 @@ spec:
       containers:
       - name: rabbitmq
         image: rabbitmq:4-management-alpine
+        # The management variant is handy for a lab because students can inspect queues visually.
         imagePullPolicy: IfNotPresent
         ports:
         - name: amqp
@@ -58,6 +68,7 @@ spec:
             name: axispay-rabbitmq-credentials
         env:
         - name: RABBITMQ_NODENAME
+          # Keep the node name simple for a single-node broker used in training.
           value: rabbit@localhost
         - name: RABBITMQ_USE_LONGNAME
           value: 'false'
@@ -89,6 +100,7 @@ spec:
             command:
             - rabbitmq-diagnostics
             - -q
+            # Ready means "running and not currently in a local alarm state".
             - check_running
             - check_local_alarms
           periodSeconds: 15

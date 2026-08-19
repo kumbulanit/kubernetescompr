@@ -1,3 +1,11 @@
+# ==============================================================================
+# INC-3 — Storage and config
+# ==============================================================================
+# This incident manifest recreates the Redis stateful workload used by the platform.
+#
+# Students troubleshooting the incident should notice the same Day 3 themes: state is
+# kept on disk, the Pod identity is stable, and configuration arrives from Secrets.
+# ==============================================================================
 apiVersion: v1
 kind: Service
 metadata:

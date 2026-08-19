@@ -21,6 +21,35 @@
 
 ---
 
+## What this concept means
+
+"Assembling a platform" here means combining several Kubernetes building blocks into one working system: multiple **Deployments** for the running applications, **Services** so they can find each other, and **Namespaces** so the parts live in clear areas with clear boundaries.
+
+That is how real systems usually look. Even if one business capability feels like "the payment platform", it is normally made of smaller pieces — gateway, auth, payment, merchant, async workers — each with its own lifecycle, scaling, and failure mode. Kubernetes is designed for composing those small pieces, not for treating everything as one giant unit.
+
+So this lab is less about one new object, and more about seeing how the objects you already learned start behaving like a platform when you put them together.
+
+```mermaid
+flowchart LR
+  subgraph Edge[axispay-edge]
+    G[edge-gateway]
+    A[auth-service]
+  end
+  subgraph Core[axispay-core]
+    P[payment-service]
+    M[merchant-service]
+  end
+  subgraph Async[axispay-async]
+    W[workers]
+  end
+  G --> A
+  G --> P
+  P --> M
+  P --> W
+```
+
+---
+
 ## This lab is different
 
 The previous four labs gave you every command. This one gives you **tasks**, and asks you to work out the commands.
