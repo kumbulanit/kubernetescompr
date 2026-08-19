@@ -1,0 +1,124 @@
+# ==============================================================================
+# payment-service — Deployment (Day 2: + resources + probes)
+# Payment orchestration - the core of the platform
+# ==============================================================================
+# This SUPERSEDES the Day 1 manifest. It is a complete object, not a patch,
+# because that is how you actually work: edit the file, re-apply, watch the
+# rollout. Diff it against days/day1/labs/L1.4-deployments/manifests/ to see
+# exactly what Day 2 adds: resource requests/limits and the three probe types.
+#
+# WHY THESE NUMBERS: measured, not guessed. See labs/day2/L2.1 §5 step 2 —
+# you run `kubectl top` against real traffic and derive them yourself.
+#   request = observed steady-state + ~30% headroom   -> what the scheduler reserves
+#   limit   = observed peak + ~100% headroom          -> what the kernel enforces
+#
+# replicas stay at 3 here (unchanged from L1.4) because payment-service is on
+# the critical path — it is the one service every payment must pass through.
+# ==============================================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: payment-service
+  namespace: axispay-core
+  labels: &labels
+    app.kubernetes.io/name: payment-service
+    app.kubernetes.io/instance: axispay
+    app.kubernetes.io/version: "1.0.0"
+    app.kubernetes.io/component: core
+    app.kubernetes.io/part-of: axispay
+    app.kubernetes.io/managed-by: kubectl
+    axispay.io/zone: core
+    axispay.io/day-introduced: "1"
+  annotations:
+    kubernetes.io/change-cause: "Day 2 — add resource requests/limits and health probes"
+spec:
+  replicas: 3
+  revisionHistoryLimit: 5
+  # RollingUpdate with maxUnavailable 0: capacity never drops during a release.
+  # The cost is headroom for one extra pod. For anything on the payment path
+  # that is the correct trade — see L2.6.
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  # The selector is IMMUTABLE after creation. Choosing it carelessly on Day 1
+  # means deleting and recreating the Deployment later — which is why it uses
+  # only the two labels that will never change, not the whole label set.
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: payment-service
+      app.kubernetes.io/instance: axispay
+  template:
+    metadata:
+      labels: *labels
+    spec:
+      # 45s, not the default 30s. A pod must first fail readiness, wait for
+      # endpoint propagation, THEN drain in-flight work. Cutting this short
+      # severs live payment authorisations mid-flight.
+      terminationGracePeriodSeconds: 45
+      containers:
+        - name: payment-service
+          image: axispay/payment-service:1.0.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          resources:
+            requests:                 # what the SCHEDULER reserves
+              cpu: "100m"
+              memory: "96Mi"
+            limits:                   # what the KERNEL enforces
+              cpu: "500m"        # exceeded -> THROTTLED (slow)
+              memory: "256Mi"    # exceeded -> OOMKILLED (dead)
+          # ---- STARTUP: protects a slow starter from liveness ----------
+          # While this is failing, liveness is suspended entirely. 30 x 2s
+          # gives 60s to come up; after that the container is restarted.
+          startupProbe:
+            httpGet: { path: /startupz, port: http }
+            periodSeconds: 2
+            failureThreshold: 30
+          # ---- LIVENESS: "is this process unrecoverable?" ---------------
+          # Consequence of failure: RESTART. It therefore must NEVER check a
+          # dependency — a 30-second database blip would restart every replica
+          # of every service at once and turn a blip into an outage.
+          livenessProbe:
+            httpGet: { path: /healthz, port: http }
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          # ---- READINESS: "can THIS pod serve right now?" ---------------
+          # Consequence of failure: removed from Service endpoints. NOT
+          # restarted. This one SHOULD check dependencies — that is the point.
+          readinessProbe:
+            httpGet: { path: /readyz, port: http }
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 2
+            successThreshold: 1
+          lifecycle:
+            preStop:
+              exec:
+                # Fail readiness first, then pause. Endpoint removal is
+                # eventually consistent across every node's kube-proxy; without
+                # this pause the process can stop accepting connections while
+                # traffic is still being sent to it.
+                command: ["sh","-c","sleep 8"]
+          env:
+            - name: ENVIRONMENT
+              value: "training"
+            - name: LOG_LEVEL
+              value: "info"
+            - name: SERVICE_VERSION
+              value: "1.0.0"
+            - name: POD_NAME
+              valueFrom: { fieldRef: { fieldPath: metadata.name } }
+            - name: POD_IP
+              valueFrom: { fieldRef: { fieldPath: status.podIP } }
+            - name: NODE_NAME
+              valueFrom: { fieldRef: { fieldPath: spec.nodeName } }
+            - name: NAMESPACE
+              valueFrom: { fieldRef: { fieldPath: metadata.namespace } }
+            - name: MERCHANT_SERVICE_URL
+              value: "http://merchant-service.axispay-core.svc.cluster.local:8080"
