@@ -66,6 +66,16 @@ make validate-lab LAB=L1.3    # Check one lab's result
 
 The `make` targets are wrappers. If you want to see the normal and underlying commands behind them, this is the equivalent:
 
+If you prefer to replay the manifests day by day, each day folder now has an apply script that applies all manifests for that day and every earlier day. The Day 5 script also installs the observability stack first so the `ServiceMonitor`/`PrometheusRule`/`AlertmanagerConfig` resources have their CRDs available.
+
+```bash
+bash days/day1/apply-all.sh
+bash days/day2/apply-all.sh
+bash days/day3/apply-all.sh
+bash days/day4/apply-all.sh
+bash days/day5/apply-all.sh
+```
+
 ```bash
 # make preflight
 bash platform/scripts/setup/00-preflight.sh --profile A
