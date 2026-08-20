@@ -13,16 +13,24 @@ kind: PersistentVolume
 metadata:
   name: axispay-ledger-archive
 spec:
+  # This defines the total amount of storage the PV exposes to the cluster.
+  # Increase this only if the backing storage on the node is large enough.
   capacity:
     storage: 2Gi
+  # ReadWriteOnce means only one node can mount it read/write at a time.
+  # This is common for single-node local storage and block storage in labs.
   accessModes:
-  - ReadWriteOnce  # One node may mount it read/write at a time; common for block storage.
-  persistentVolumeReclaimPolicy: Retain  # Keep the data even if the claim is deleted.
+  - ReadWriteOnce
+  # Keep the data around even if the PVC is deleted. This is helpful for training
+  # because it makes troubleshooting easier and protects ledger data from accidental loss.
+  persistentVolumeReclaimPolicy: Retain
   # Using a manual class stops dynamic provisioning and makes this PV available only
   # to claims that explicitly ask for axispay-manual.
   storageClassName: axispay-manual
   hostPath:
     # hostPath is simple for a lab, but it ties the volume to a node's local disk.
+    # If you want the volume to live somewhere else, change this path and make sure
+    # the directory exists on the node before applying the manifest.
     path: /mnt/axispay/ledger-archive
     type: DirectoryOrCreate
   nodeAffinity:
@@ -31,6 +39,7 @@ spec:
       - matchExpressions:
         # Because this is node-local storage, Kubernetes must schedule consumers onto
         # the node that actually has the files.
+        # Change this to the actual node name in your cluster if it differs.
         - key: kubernetes.io/hostname
           operator: In
           values:
@@ -42,11 +51,14 @@ metadata:
   name: ledger-archive
   namespace: axispay-core
 spec:
+  # The PVC requests storage from the cluster. The actual storage is provided by the PV.
   accessModes:
   - ReadWriteOnce
+  # This must match the PV's storageClassName, otherwise the claim will stay Pending.
   storageClassName: axispay-manual
   resources:
     requests:
       # A claim may request less than the PV's full capacity; Kubernetes only requires
       # the volume to be large enough, not exactly equal in size.
+      # Increase this if your workload needs more space.
       storage: 1Gi

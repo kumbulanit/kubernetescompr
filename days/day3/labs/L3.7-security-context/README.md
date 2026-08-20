@@ -66,6 +66,128 @@ Diagram source: Kubernetes blog/documentation (CC BY 4.0), “User namespaces be
 
 ---
 
+## What these manifests are doing
+
+The two YAML files in this lab are deliberately different:
+
+- `manifests/01-securitycontext.yaml` creates a `ConfigMap` that stores example pod-level and container-level security settings as plain text snippets. This object is a reference and documentation aid. It does not itself enforce the policy on a workload.
+- `manifests/02-hardened-deployments.yaml` contains full `Deployment` objects for `edge-gateway`, `auth-service`, `merchant-service`, `payment-service`, `fraud-service`, and `routing-service`. Each Deployment contains a pod-level `securityContext` and a container-level `securityContext`.
+
+The important hardening fields are:
+
+- `runAsNonRoot: true` — kubelet refuses to start the container if it would run as root
+- `runAsUser: 10001` and `runAsGroup: 10001` — lock the process to a known non-root UID/GID
+- `fsGroup: 10001` — allow mounted volumes to be written by the non-root identity
+- `seccompProfile.type: RuntimeDefault` — reduce the risk of dangerous syscalls
+- `allowPrivilegeEscalation: false` — prevent the container from getting more privileges at runtime
+- `readOnlyRootFilesystem: true` — make the container image filesystem read-only
+- `capabilities.drop: ["ALL"]` — remove Linux capabilities that the process does not need
+- `emptyDir` mounted at `/tmp` — provide a small writable scratch area even though the root filesystem is read-only
+
+This is why the YAMLs are not just “random config.” They define a baseline that moves the application away from root, restricts what it can do, and makes the runtime safer.
+
+---
+
+## Useful kubectl commands for this lab
+
+These are the plain Kubernetes commands you will use most often when working with this lab.
+
+### Create or apply objects
+
+Use these when you want to create or update resources from YAML:
+
+```bash
+kubectl apply -f manifests/
+```
+
+What it does: creates or updates the objects from the files in the `manifests/` folder.
+
+```bash
+kubectl create -f manifests/01-securitycontext.yaml
+```
+
+What it does: creates a resource from a single file. Use it when you want to create only one object and do not want to update an existing one.
+
+```bash
+kubectl replace --force -f manifests/02-hardened-deployments.yaml
+```
+
+What it does: replaces the live object with the YAML from the file. This is useful if you want a full overwrite rather than a normal update.
+
+### Edit existing objects
+
+Use these when you want to change a live workload without rewriting the whole file first:
+
+```bash
+kubectl edit deployment/payment-service -n axispay-core
+```
+
+What it does: opens the live Deployment manifest in your editor so you can adjust fields such as `securityContext` or replica count.
+
+```bash
+kubectl patch deployment/payment-service -n axispay-core --type='merge' -p '{"spec":{"template":{"spec":{"securityContext":{"runAsUser":10002}}}}}'
+```
+
+What it does: changes a specific field in-place. This is faster than editing the full YAML when you only need one small change.
+
+### Delete objects
+
+Use these when you want to remove resources you created:
+
+```bash
+kubectl delete deployment edge-gateway -n axispay-edge
+```
+
+What it does: removes one Deployment.
+
+```bash
+kubectl delete -f manifests/02-hardened-deployments.yaml
+```
+
+What it does: deletes every object described by the YAML file.
+
+```bash
+kubectl delete configmap axispay-security-baseline -n axispay-core
+```
+
+What it does: removes the reference ConfigMap.
+
+### Troubleshoot running workloads
+
+Use these when you need to understand what is actually happening in the cluster:
+
+```bash
+kubectl get deploy,pod -n axispay-core
+```
+
+What it does: shows Deployments and Pods in the namespace so you can see whether the rollout is healthy.
+
+```bash
+kubectl describe pod -n axispay-core -l app.kubernetes.io/name=payment-service
+```
+
+What it does: shows the pod events, the applied securityContext, the container state, and any scheduling or startup problems.
+
+```bash
+kubectl get events -A --sort-by=.metadata.creationTimestamp
+```
+
+What it does: shows recent cluster events, which is often the fastest place to spot why a pod is failing to start.
+
+```bash
+kubectl logs deployment/payment-service -n axispay-core
+```
+
+What it does: prints the container logs if the application is running but behaving incorrectly.
+
+```bash
+kubectl exec -n axispay-core deploy/payment-service -- id
+```
+
+What it does: runs a command inside the container, which is the fastest way to verify the runtime user and permissions.
+
+---
+
 ## Step 1 — Apply the hardening baseline
 
 **Run this:**

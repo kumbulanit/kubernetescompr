@@ -98,6 +98,208 @@ The repeated `axispay-db-credentials` line is correct: there are two Secrets wit
 
 ---
 
+## Optional: create your own Secret and save it as YAML without committing the real value
+
+This section shows the real-world workflow for creating a Kubernetes Secret when you cannot place the actual secret value into Git. The key idea is simple:
+
+1. keep the sensitive value outside the repository, in a local file or a secret manager
+2. use that source to create the Secret in Kubernetes
+3. optionally save the generated YAML to a local file or temporary location, but do not commit it to the repo
+
+This is the pattern you would use in a real team environment, because committing secrets to Git is dangerous and usually violates security policy.
+
+### Why this workflow exists
+
+There are two different things people often mix up:
+
+- the secret value itself, such as a password or token
+- the Kubernetes manifest that describes how that value should be stored and consumed
+
+You should never store the actual secret value in Git. But you may still need a YAML representation of the Secret for deployment, automation, or documentation. The safe approach is to generate that YAML from a trusted source at the moment you deploy, rather than writing the secret value directly into the file by hand.
+
+### Option A — create a Secret from a local env file
+
+This is a very practical approach for a developer machine, a lab environment, or a CI runner that has access to a secure local workspace.
+
+#### Step A1 — create a local file outside the repository
+
+Create a folder such as `.secrets/` and place your values there. This folder should not be committed to Git.
+
+```bash
+mkdir -p .secrets
+cat > .secrets/axispay-db.env <<'EOF'
+POSTGRES_USER=axispay_app
+POSTGRES_PASSWORD=super-secret-value
+EOF
+```
+
+What is happening here?
+
+- `.secrets/` is just a local folder for sensitive values
+- `axispay-db.env` is a simple key/value file
+- the values are supplied by you at runtime, not by the repository
+
+This is a good practice because the secret stays in a place you control, and it can be excluded from Git using `.gitignore`.
+
+#### Step A2 — create the Secret from that local file
+
+Now use `kubectl` to create the Secret directly in Kubernetes:
+
+```bash
+kubectl create secret generic axispay-db-credentials \
+  -n axispay-data \
+  --from-env-file=.secrets/axispay-db.env \
+  --dry-run=client -o yaml > /tmp/axispay-db-credentials.yaml
+```
+
+Let us unpack that command:
+
+- `kubectl create secret generic ...` tells Kubernetes to create a generic Secret object
+- `axispay-db-credentials` is the Secret name
+- `-n axispay-data` puts it in the correct namespace
+- `--from-env-file=.secrets/axispay-db.env` loads the values from the local file you just created
+- `--dry-run=client -o yaml` tells kubectl to print the object description as YAML without applying it yet
+- `> /tmp/axispay-db-credentials.yaml` saves the generated Secret YAML to a temporary file
+
+Why save it to `/tmp/` instead of the repository?
+
+- `/tmp/` is outside the repo and easy to clean up
+- it avoids accidentally committing a Secret manifest to Git
+- it lets you inspect the resulting YAML before applying it
+
+#### Step A3 — inspect the generated YAML
+
+```bash
+cat /tmp/axispay-db-credentials.yaml
+```
+
+You will see that the values are stored under `data:` and that they look base64-encoded. That is expected. Kubernetes does this automatically for Secret data. The important thing is that the original values were supplied from your local file, not from Git.
+
+#### Step A4 — apply the Secret if needed
+
+If you want to create it in the cluster instead of only generating the YAML, you can apply the file:
+
+```bash
+kubectl apply -f /tmp/axispay-db-credentials.yaml
+```
+
+This creates the Secret in the cluster using the generated YAML.
+
+### Option B — create a Secret directly from literal values
+
+This is useful when you have only one or two values and want a quick one-off secret.
+
+```bash
+kubectl create secret generic axispay-jwt-signing \
+  -n axispay-edge \
+  --from-literal=JWT_SIGNING_KEY='super-secret-jwt-key' \
+  --dry-run=client -o yaml > /tmp/axispay-jwt-signing.yaml
+```
+
+What each part does:
+
+- `generic` means a standard Kubernetes Secret with simple key/value pairs
+- `axispay-jwt-signing` is the Secret name
+- `-n axispay-edge` ensures the Secret is created in the correct namespace
+- `--from-literal=JWT_SIGNING_KEY='super-secret-jwt-key'` provides one secret value directly
+- `--dry-run=client -o yaml` prints the Secret as YAML without changing the cluster yet
+- `> /tmp/axispay-jwt-signing.yaml` saves the YAML locally
+
+This is useful for demos or quick labs, but for production teams it is usually better to pull values from a secret manager rather than typing them directly into the shell.
+
+### Option C — write the manifest manually using stringData
+
+Sometimes you want to author the Secret YAML yourself. In that case, you might write a file like this:
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: my-example-secret
+  namespace: axispay-data
+type: Opaque
+stringData:
+  POSTGRES_USER: axispay_app
+  POSTGRES_PASSWORD: super-secret-value
+```
+
+This is easy to read, but it is still not safe to commit to Git unless you are in a training environment and the values are harmless dummy values.
+
+Why use `stringData`?
+
+- it is easier for humans to read than base64-encoded `data`
+- Kubernetes converts it into the proper Secret storage format when the object is created
+
+Why not use `stringData` in production for real secrets?
+
+- it is still just a manifest file in plaintext if you commit it
+- it is easy to accidentally leak the values if the file is shared or stored in the repo
+- secret managers are safer because they centralize rotation, access control, and auditing
+
+### What the generated YAML looks like
+
+If you create a Secret from the CLI, the output is often similar to this:
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: axispay-db-credentials
+  namespace: axispay-data
+type: Opaque
+data:
+  POSTGRES_USER: YXhpc3BheV9hcHA=
+  POSTGRES_PASSWORD: c3VwZXItc2VjcmV0LXZhbHVl
+```
+
+The values are base64-encoded. That is expected. The YAML exists so Kubernetes can understand the object, but the values are still not meant to be stored in plain text in Git.
+
+### Why base64 appears in the YAML
+
+This is an important distinction:
+
+- `stringData` is human-readable input
+- `data` is the encoded form that Kubernetes stores internally
+
+Base64 is not encryption. It is just an encoding format. If someone has access to the Secret object, they can decode it. That is why access control and secret managers matter so much.
+
+### Recommended practice for teams
+
+If you are working in a real team or production environment, the recommended practice is:
+
+1. store secrets in a secret manager such as Vault, AWS Secrets Manager, Azure Key Vault, or GCP Secret Manager
+2. let your deployment pipeline fetch values from the manager
+3. create the Secret from those values at deployment time
+4. avoid storing plaintext secrets in source control
+
+A common GitOps or CI/CD approach is:
+
+- keep a template Secret manifest in Git
+- inject the real values during deployment from a secret manager or CI secret store
+- never commit the real data itself
+
+### Make sure secrets do not get committed by accident
+
+A simple safeguard is to add your local secret folder to `.gitignore`:
+
+```gitignore
+.secrets/
+*.env
+```
+
+That way, even if you create a local file with real values, it will not accidentally be committed to Git.
+
+### Summary
+
+The practical takeaway is:
+
+- do not put real secrets in Git
+- create them from a local file, CLI input, or a secret manager
+- generate Secret YAML locally if you need it
+- keep the generated file outside the repository or delete it after use
+
+---
+
 ## Step 2 — Inspect them in the right namespaces
 
 **Run this:**

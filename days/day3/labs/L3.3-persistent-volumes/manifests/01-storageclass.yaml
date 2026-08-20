@@ -13,11 +13,18 @@ kind: StorageClass
 metadata:
   name: axispay-standard
 # Minikube uses a simple hostPath provisioner so the labs work on one local cluster.
+# If you are on a different cluster, you may need to change this provisioner to the
+# storage backend your environment provides (for example, a cloud CSI driver).
 provisioner: k8s.io/minikube-hostpath
 # Retain keeps the underlying data around after the PVC is deleted, which is useful
 # in a training lab because students can inspect what happened instead of losing it.
+# Change to Delete if you want Kubernetes to remove the backing data automatically.
 reclaimPolicy: Retain
 # Wait until a Pod actually uses the claim before choosing backing storage. This
 # matters more in multi-node clusters, where the chosen node can affect scheduling.
+# If you want immediate binding, you can change this to Immediate, but that may make
+# the choice of node less predictable in larger clusters.
 volumeBindingMode: WaitForFirstConsumer
-allowVolumeExpansion: true  # Lets a PVC request more space later without recreating it.
+# Lets a PVC request more space later without recreating it. Good for demos, but
+# not all storage backends support this equally well.
+allowVolumeExpansion: true
