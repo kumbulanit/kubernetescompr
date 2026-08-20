@@ -6,6 +6,8 @@
 #
 # The key thing to notice is that Kubernetes security settings are layered: some
 # belong to the whole Pod, while others belong to each container inside it.
+# This file is a reference object: it does not itself harden the workloads. The
+# actual enforcement happens when a Deployment or Pod applies the same fields.
 # ==============================================================================
 apiVersion: v1
 kind: ConfigMap
@@ -14,19 +16,34 @@ metadata:
   namespace: axispay-core
 data:
   # Pod-level settings apply to every container unless a container overrides them.
+  # These are the shared identity and runtime-safety controls for the whole Pod.
   pod-security-context.yaml: |
     securityContext:
-      runAsNonRoot: true            # kubelet REFUSES to start the pod if the image needs root
+      # Prevent the container from starting as root. Kubernetes will reject the Pod
+      # if the image or runtime would otherwise use UID 0.
+      runAsNonRoot: true
+      # Force the process to run as a specific non-root UID.
       runAsUser: 10001
+      # Force the process to run as a specific non-root primary GID.
       runAsGroup: 10001
-      fsGroup: 10001                # chown mounted volumes so a non-root process can write
+      # Make mounted volumes readable/writable by the chosen UID/GID.
+      fsGroup: 10001
       seccompProfile:
-        type: RuntimeDefault        # block a large set of risky syscalls by default
+        # Apply the default seccomp profile so the kernel blocks a large set of
+        # potentially dangerous syscalls.
+        type: RuntimeDefault
   # Container-level settings narrow what a single process can do inside the Pod.
+  # These are the privilege-reduction controls for each container.
   container-security-context.yaml: |
     securityContext:
-      allowPrivilegeEscalation: false   # blocks setuid binaries from gaining more power
-      readOnlyRootFilesystem: true      # a compromised process cannot write into the image layer
+      # Disallow setuid/setgid binaries from gaining more power during execution.
+      allowPrivilegeEscalation: false
+      # Make the container image filesystem read-only so a compromise cannot write
+      # into the image layer by default.
+      readOnlyRootFilesystem: true
       capabilities:
-        drop: ["ALL"]                   # containers get extra Linux capabilities unless you drop them
+        # Drop all Linux capabilities so the process starts with the minimum kernel
+        # powers it needs.
+        drop: ["ALL"]
+      # Explicitly ensure the container is not privileged.
       privileged: false

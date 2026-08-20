@@ -28,6 +28,26 @@ StatefulSets give you three important guarantees: stable pod names, ordered crea
 
 That does not magically create a clustered database. StatefulSet solves identity, ordering, and storage attachment. Replication, leader election, backups, and database-level failover are still separate concerns.
 
+### Why a Service is needed for StatefulSets
+
+A StatefulSet by itself is not enough for clients to find the replicas reliably. The pods have stable names, but Kubernetes still needs a way to discover them as a group. That is why a StatefulSet is usually paired with a headless Service.
+
+A headless Service has a very important role:
+
+- it creates DNS entries for each pod in the StatefulSet
+- those DNS names are stable and predictable, such as `postgres-0.postgres.axispay-data.svc.cluster.local`
+- clients can reach a specific replica directly by name
+- the Service also gives the StatefulSet a consistent network identity, even though the pods are stateful and not interchangeable
+
+Without the Service, the StatefulSet still exists, but you lose the simple and reliable network discovery layer. Pods might have stable names, but there is no clean DNS abstraction that says “these are the members of this stateful workload.”
+
+In other words:
+
+- the StatefulSet gives the workload identity and storage behavior
+- the Service gives the workload a stable network entry point and DNS names
+
+That combination is what makes StatefulSets practical for databases and similar systems.
+
 ```mermaid
 flowchart TD
   STS[StatefulSet postgres] --> P0[postgres-0]

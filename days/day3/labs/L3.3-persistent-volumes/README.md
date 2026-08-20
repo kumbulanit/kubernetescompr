@@ -85,6 +85,32 @@ persistentvolume/axispay-ledger-archive created
 persistentvolumeclaim/ledger-archive created
 ```
 
+If you are using a local single-node cluster, make sure the host path exists on the actual node before you apply the manifest. On the node itself, the equivalent of the YAML path `/mnt/axispay/ledger-archive` is:
+
+```bash
+sudo mkdir -p /mnt/axispay/ledger-archive
+sudo chmod 0777 /mnt/axispay/ledger-archive
+```
+
+That directory must exist because the PV uses `hostPath` and `DirectoryOrCreate`.
+
+A few plain Kubernetes commands that are useful when you are creating storage objects:
+
+```bash
+kubectl get storageclass
+kubectl get pv
+kubectl get pvc -A
+kubectl apply -f manifests/01-storageclass.yaml
+kubectl apply -f manifests/02-pv-ledger-archive.yaml
+```
+
+If you want to create the same objects from scratch without relying on the folder-based apply, you can also use the files directly:
+
+```bash
+kubectl create -f manifests/01-storageclass.yaml
+kubectl create -f manifests/02-pv-ledger-archive.yaml
+```
+
 ---
 
 ## Step 2 — Check the binding
@@ -159,6 +185,56 @@ Two details matter here:
 ## If something went wrong
 
 If the claim and volume do not match, `Pending` is what you will see.
+
+Here are the most useful vanilla troubleshooting commands for persistent storage:
+
+```bash
+kubectl get pv axispay-ledger-archive
+kubectl get pvc ledger-archive -n axispay-core
+kubectl describe pv axispay-ledger-archive
+kubectl describe pvc ledger-archive -n axispay-core
+kubectl get events -n axispay-core --sort-by=.metadata.creationTimestamp
+kubectl get nodes
+kubectl get node axispay-m02 -o wide
+```
+
+What to look for:
+
+- `kubectl describe pvc ...` shows whether the claim failed to bind and why
+- `kubectl get events ...` often reveals the real reason a PVC stays `Pending`
+- `kubectl get nodes` and `kubectl get node ... -o wide` help confirm the node name and whether the node is ready
+- if the volume is still not binding, compare the PV's `storageClassName`, `accessModes`, size, and node affinity with the PVC request
+
+If the host path is the issue, check the node directly:
+
+```bash
+sudo ls -la /mnt/axispay/ledger-archive
+sudo mkdir -p /mnt/axispay/ledger-archive
+```
+
+If you need to recreate the objects after changing the YAML, the usual sequence is:
+
+```bash
+kubectl delete pvc ledger-archive -n axispay-core
+kubectl delete pv axispay-ledger-archive
+kubectl delete storageclass axispay-standard
+kubectl apply -f manifests/
+```
+
+A few important notes:
+
+- delete the PVC first, then the PV, because the PVC is the workload-facing request
+- for a manual PV with `Retain`, deleting the PVC does not automatically erase the data on disk
+- if you change the host path or node name in the YAML, recreate the PV because those values are part of the object's identity and binding behavior
+
+If you want to inspect the live object from the API rather than the file, you can also view it as YAML:
+
+```bash
+kubectl get pv axispay-ledger-archive -o yaml
+kubectl get pvc ledger-archive -n axispay-core -o yaml
+```
+
+That is especially useful when you want to compare what the cluster is storing with what you expected from the manifest.
 
 ```text
 $ kubectl get pvc ledger-archive -n axispay-core

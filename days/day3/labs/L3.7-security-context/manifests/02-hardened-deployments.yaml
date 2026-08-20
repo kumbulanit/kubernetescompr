@@ -11,6 +11,9 @@
 # writable scratch area such as `/tmp`.
 # ==============================================================================
 ---
+# Each Deployment below is a full object, not a patch. That makes `kubectl apply`
+# deterministic and avoids the selector/template validation errors that often occur
+# when a patch only changes a few fields.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -43,28 +46,45 @@ spec:
         axispay.io/zone: edge
         axispay.io/day-introduced: "3"
     spec:
+      # Pod-level security settings define the baseline identity and syscall profile
+      # for the whole Pod. They apply to every container unless a container overrides
+      # them explicitly.
       terminationGracePeriodSeconds: 30
       securityContext:
+        # Require the container to run as a non-root UID. This is the first line of
+        # defense against accidental root execution.
         runAsNonRoot: true
+        # Lock the workload to the non-root UID/GID used by the training images.
         runAsUser: 10001
         runAsGroup: 10001
+        # Ensure mounted volumes are accessible to the non-root user.
         fsGroup: 10001
         seccompProfile:
+          # Apply the default seccomp profile to reduce the risk of dangerous syscalls.
           type: RuntimeDefault
       containers:
         - name: edge-gateway
           image: axispay/edge-gateway:1.0.0
           imagePullPolicy: IfNotPresent
+          # Container-level security settings narrow what this specific process can do.
           securityContext:
+            # Prevent the process from gaining more privileges through setuid/setgid.
             allowPrivilegeEscalation: false
+            # Make the container image filesystem read-only. The pod must then declare
+            # a writable scratch path such as /tmp.
             readOnlyRootFilesystem: true
             capabilities:
+              # Drop all Linux capabilities so the container starts with the minimum
+              # kernel powers it needs.
               drop:
                 - ALL
           volumeMounts:
+            # /tmp is an explicit writable scratch area that is allowed even though
+            # the root filesystem is read-only.
             - name: tmp
               mountPath: /tmp
       volumes:
+        # An in-memory emptyDir makes a safe scratch volume for temporary files.
         - name: tmp
           emptyDir:
             medium: Memory
